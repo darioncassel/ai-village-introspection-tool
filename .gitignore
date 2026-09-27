@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.env
+.env.*
+# local state and data, if kept inside the checkout
+.village-introspect/
+village-state/
+ai-village-data/
+.envrc
+*.env
+.netrc
+# probe logs and dataset files, wherever they end up
+probes.jsonl
+stars.jsonl
+*.jsonl.gz
+village-transcript.json

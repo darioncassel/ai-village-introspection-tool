@@ -1,0 +1,1226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Village Introspect</title>
+<script>
+  (function(){ var t=null; try{ t=localStorage.getItem('theme'); }catch(e){}
+    if(t==='light'||t==='dark') document.documentElement.dataset.theme=t; })();
+</script>
+<style>
+/* Tokens. Family hues in a fixed order (openai blue · anthropic orange · google aqua · other yellow),
+   checked for colour-vision-deficiency separation in both modes. Fidelity uses the STATUS
+   palette (never a series colour); --accent is reserved for selection, search hits and context. */
+:root{
+  color-scheme: light;
+  --bg:#f6f6f3; --surface:#fcfcfb; --raised:#ffffff; --sunken:#efefeb;
+  --ink:#1b1b1a; --muted:#52514e; --faint:#8a8984; --line:#e2e1dc; --line-2:#cfcec8; --lane:#c9c8c2;
+  --f-openai:#2a78d6; --f-anthropic:#eb6834; --f-google:#1baf7a; --f-other:#eda100; --f-human:#6f6e69;
+  --accent:#c42a6d; --accent-soft:rgba(196,42,109,.10); --mark:rgba(237,161,0,.35);
+  --near:#0a8a0a; --near-soft:rgba(12,163,12,.09); --approx:#8a5d00; --approx-edge:#e3a008; --approx-soft:rgba(250,178,25,.13);
+  --cf:#c23535; --cf-soft:rgba(208,59,59,.09); --shadow:0 8px 28px rgba(0,0,0,.14);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --bg:#121211; --surface:#1a1a19; --raised:#222220; --sunken:#171716;
+    --ink:#ecebe7; --muted:#c3c2b7; --faint:#8d8c85; --line:#2d2d2a; --line-2:#3b3b37; --lane:#45443f;
+    --f-openai:#3987e5; --f-anthropic:#d95926; --f-google:#199e70; --f-other:#c98500; --f-human:#9a9992;
+    --accent:#f0609f; --accent-soft:rgba(240,96,159,.14); --mark:rgba(201,133,0,.45);
+    --near:#3bc43b; --near-soft:rgba(12,163,12,.14); --approx:#fab219; --approx-edge:#fab219; --approx-soft:rgba(250,178,25,.11);
+    --cf:#e5605a; --cf-soft:rgba(229,96,90,.13); --shadow:0 10px 32px rgba(0,0,0,.55);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --bg:#121211; --surface:#1a1a19; --raised:#222220; --sunken:#171716;
+  --ink:#ecebe7; --muted:#c3c2b7; --faint:#8d8c85; --line:#2d2d2a; --line-2:#3b3b37; --lane:#45443f;
+  --f-openai:#3987e5; --f-anthropic:#d95926; --f-google:#199e70; --f-other:#c98500; --f-human:#9a9992;
+  --accent:#f0609f; --accent-soft:rgba(240,96,159,.14); --mark:rgba(201,133,0,.45);
+  --near:#3bc43b; --near-soft:rgba(12,163,12,.14); --approx:#fab219; --approx-edge:#fab219; --approx-soft:rgba(250,178,25,.11);
+  --cf:#e5605a; --cf-soft:rgba(229,96,90,.13); --shadow:0 10px 32px rgba(0,0,0,.55);
+}
+*{ box-sizing:border-box; }
+html,body{ height:100%; }
+body{ margin:0; background:var(--bg); color:var(--ink); font:13.5px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; overflow:hidden; }
+button,input,select,textarea{ font:inherit; color:inherit; }
+button{ cursor:pointer; background:var(--raised); border:1px solid var(--line-2); border-radius:7px; padding:3px 10px; }
+button:hover{ border-color:var(--faint); }
+button.primary{ background:var(--ink); color:var(--surface); border-color:var(--ink); font-weight:600; }
+button.ghost{ background:transparent; border-color:transparent; color:var(--muted); }
+button.ghost:hover{ color:var(--ink); border-color:var(--line-2); }
+button:disabled{ opacity:.45; cursor:not-allowed; }
+:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+input,select,textarea{ background:var(--raised); border:1px solid var(--line-2); border-radius:7px; padding:5px 9px; }
+textarea{ resize:none; width:100%; }
+code,pre,.mono{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+mark{ background:var(--mark); color:inherit; border-radius:2px; padding:0 1px; }
+.muted{ color:var(--muted); } .faint{ color:var(--faint); }
+.kbd{ font:11px ui-monospace,monospace; border:1px solid var(--line-2); border-bottom-width:2px; border-radius:4px; padding:0 4px; color:var(--muted); background:var(--raised); }
+.tag{ font-size:10px; border:1px solid var(--line-2); border-radius:3px; padding:0 4px; color:var(--faint); font-weight:500; white-space:nowrap; vertical-align:1px; }
+.chip{ display:inline-flex; align-items:center; gap:5px; border:1px solid var(--line-2); border-radius:999px; padding:2px 10px; background:var(--raised); cursor:pointer; white-space:nowrap; font-size:12.5px; }
+.chip:hover{ border-color:var(--faint); }
+.fd{ display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--f-human); flex:none; }
+.fd.fg-openai{ background:var(--f-openai); } .fd.fg-anthropic{ background:var(--f-anthropic); } .fd.fg-google{ background:var(--f-google); } .fd.fg-other{ background:var(--f-other); }
+.fd.hum{ background:transparent; border:1.5px solid var(--f-human); }
+
+/* ------------------------------ shell: header + ONE pane (+ Ask when open) ------------------------------ */
+#app{ display:grid; grid-template-rows:auto auto 1fr; grid-template-columns:minmax(0,1fr); height:100vh; }
+header.top{ display:flex; align-items:center; gap:10px; height:48px; padding:0 16px; background:var(--surface); border-bottom:1px solid var(--line); min-width:0; }
+.brand{ font-weight:700; letter-spacing:-.01em; white-space:nowrap; }
+.searchwrap{ position:relative; flex:1 1 auto; min-width:0; max-width:560px; }
+#q{ width:100%; min-width:0; padding:7px 30px 7px 30px; border-radius:9px; background:var(--sunken); }
+.searchwrap .ic{ position:absolute; left:10px; top:7px; color:var(--faint); pointer-events:none; }
+#qclear{ position:absolute; right:5px; top:5px; padding:1px 7px; display:none; }
+.suggest{ position:absolute; top:38px; left:0; right:0; background:var(--raised); border:1px solid var(--line-2); border-radius:9px; box-shadow:var(--shadow); padding:10px 12px; z-index:40; display:none; font-size:12.5px; }
+.suggest .chips{ display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 10px; }
+.hdr-right{ display:flex; align-items:center; gap:6px; margin-left:auto; }
+.focuschips{ display:flex; gap:6px; align-items:center; }
+.fpill{ display:inline-flex; align-items:center; gap:6px; border:1px solid var(--accent); border-radius:999px; padding:1px 4px 1px 9px; font-size:12.5px; white-space:nowrap; }
+.fpill input{ margin:0; }
+.fpill button{ border:0; background:none; padding:0 5px; color:var(--muted); }
+#jobs{ display:none; } #jobs.on{ display:inline-flex; gap:6px; align-items:center; }
+.pulse{ width:8px; height:8px; border-radius:50%; background:var(--accent); animation:pl 1.2s infinite; flex:none; }
+@keyframes pl{ 50%{ opacity:.25; } }
+#stripband{ display:none; background:var(--surface); border-bottom:1px solid var(--line); }
+body.v-strip #stripband{ display:block; }
+#stripwrap{ position:relative; height:64px; min-width:0; overflow:hidden; }
+#strip{ display:block; width:100%; height:100%; min-width:0; cursor:pointer; }
+
+.panes{ display:grid; grid-template-columns:minmax(0,1fr) 0; min-height:0; }
+body.ask-open .panes{ grid-template-columns:minmax(0,1fr) var(--ask-w,460px); }
+#tlpane{ overflow-y:auto; min-height:0; position:relative; }
+#tl{ max-width:1000px; margin:0 auto; padding:6px 20px 160px 12px; }
+body.ask-open #tl{ max-width:none; }
+
+/* ------------------------------ the timeline (git-branch style) ------------------------------ */
+.lanehead{ position:sticky; top:0; z-index:5; display:flex; align-items:flex-end; background:var(--bg); padding:2px 0 3px; font-size:10.5px; color:var(--faint); border-bottom:1px solid var(--line); margin-bottom:4px; cursor:help; }
+.lanehead .lh{ width:16px; flex:none; position:relative; height:44px; }
+.lanehead .lh span{ position:absolute; bottom:2px; left:8px; transform:rotate(-55deg); transform-origin:left bottom; white-space:nowrap; color:var(--muted); }
+.lanehead .hint{ margin-left:14px; padding-bottom:2px; }
+.r{ display:flex; align-items:stretch; min-height:26px; }
+.g{ position:relative; flex:none; }
+.g svg{ position:absolute; left:0; top:0; height:100%; overflow:visible; }
+.g .ln{ stroke:var(--lane); stroke-width:2; fill:none; }
+.g .ln.q{ stroke-dasharray:2 3; }
+.g .ln.ctx{ stroke:var(--accent); stroke-width:3; }
+.b{ flex:1; min-width:0; padding:3px 8px 3px 6px; border-radius:7px; cursor:pointer; }
+.b:hover{ background:var(--surface); }
+.r.sel>.b{ background:var(--surface); box-shadow:inset 0 0 0 1px var(--line-2); }
+.line1{ display:flex; align-items:baseline; gap:8px; min-width:0; line-height:20px; }
+.line1 .tw{ flex:none; width:12px; color:var(--faint); font-size:10px; }
+.caret{ display:inline-block; transition:transform .12s; } .r.open>.b .caret{ transform:rotate(90deg); }
+.meta{ color:var(--faint); font-size:12px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.sub{ color:var(--muted); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.badge{ font-size:10.5px; border-radius:4px; padding:0 5px; border:1px solid var(--line-2); color:var(--muted); line-height:15px; white-space:nowrap; flex:none; }
+.badge.cc{ border-color:var(--near); color:var(--near); } .badge.hit{ border-color:var(--accent); color:var(--accent); font-weight:650; }
+.badge.help{ border-color:var(--cf); color:var(--cf); } .badge.foc{ border-color:var(--accent); color:var(--accent); }
+.r.goal{ min-height:34px; } .r.goal>.b{ padding-top:12px; padding-bottom:2px; cursor:pointer; }
+.r.goal>.b:hover{ background:none; } .r.goal>.b:hover .t{ color:var(--ink); }
+.r.goal>.b .t{ font-weight:700; font-size:11.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.dayblock{ position:relative; }
+.dayblock>.r.day{ position:sticky; top:var(--lh-h,0px); z-index:4; background:var(--bg); box-shadow:0 1px 0 var(--line); }
+.dayblock>.r.day>.b{ background:var(--bg); }
+.dnav{ margin-left:auto; display:inline-flex; gap:2px; }
+.dnav button{ padding:0 7px; font-size:12px; }
+.r.dayend>.b{ cursor:default; padding-bottom:10px; } .r.dayend>.b:hover{ background:none; }
+.r.msg>.b .mh{ display:flex; align-items:baseline; gap:8px; line-height:20px; min-width:0; }
+.mtext{ white-space:pre-wrap; word-break:break-word; margin:0 0 3px 44px; font-size:13.5px; line-height:1.5; }
+.mtext pre{ background:var(--sunken); padding:6px 8px; border-radius:6px; overflow:auto; white-space:pre; font-size:12px; margin:4px 0; }
+.mtext.clamp{ display:-webkit-box; -webkit-line-clamp:14; -webkit-box-orient:vertical; overflow:hidden; }
+.r.msg.op .mtext{ font-weight:450; }
+.linkish{ display:block; border:0; background:none; padding:0; margin:1px 0 2px 44px; color:var(--faint); font-size:12px; cursor:pointer; text-align:left; }
+.linkish:hover{ color:var(--ink); text-decoration:underline; }
+.r.msg .thinkbox{ margin:4px 0 6px 44px; }
+.acts2{ margin-left:auto; display:inline-flex; gap:4px; opacity:0; flex:none; }
+.r.msg:hover .acts2,.r.msg.sel .acts2,.r.msg.anchor .acts2{ opacity:1; }
+.acts2 .askbtn{ opacity:1; }
+.dots{ padding:0 7px; line-height:19px; }
+.r.msg{ padding-bottom:4px; }
+.r.era{ min-height:32px; } .r.era>.b{ padding-top:5px; padding-bottom:5px; }
+.r.era.nohit,.r.day.nohit{ opacity:.45; }
+.r.day>.b .t{ font-weight:600; white-space:nowrap; }
+.r.msg>.b .who{ font-weight:600; white-space:nowrap; flex:none; max-width:190px; overflow:hidden; text-overflow:ellipsis; }
+.r.msg>.b .tm{ color:var(--faint); font-size:11.5px; font-variant-numeric:tabular-nums; flex:none; width:36px; }
+.r.msg>.b .pv{ color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; flex:1; }
+.r.msg.op>.b .pv{ color:var(--ink); }
+.r.msg.auto>.b{ opacity:.65; }
+.r.msg.foc>.b{ box-shadow:inset 3px 0 0 var(--accent); }
+.r.msg.help>.b .pv{ color:var(--cf); }
+.r.msg.hitrow>.b .tm{ color:var(--accent); font-weight:700; }
+.r.inctx>.b{ box-shadow:inset 2px 0 0 var(--accent); }
+.r.anchor>.b{ background:var(--accent-soft); box-shadow:inset 0 0 0 1.5px var(--accent); }
+.gly{ display:inline-flex; gap:5px; align-items:center; color:var(--faint); font-size:11px; flex:none; }
+.g-th{ display:inline-flex; align-items:center; gap:1px; color:var(--muted); line-height:1; }
+.g-th small{ font-size:9px; font-weight:700; }
+.g-cc{ color:var(--near); border:1px solid var(--near); border-radius:3px; padding:0 3px; font-size:10px; line-height:13px; font-weight:650; }
+.g-pr{ color:var(--accent); }
+.room{ color:var(--faint); font-size:11px; }
+.askbtn{ padding:0 9px; font-size:12px; line-height:19px; opacity:0; flex:none; }
+.r.msg:hover .askbtn,.r.msg.sel .askbtn,.r.msg.open .askbtn{ opacity:1; }
+.detail{ margin:4px 0 8px; padding:10px 12px; background:var(--raised); border:1px solid var(--line); border-radius:9px; cursor:auto; }
+.detail .dm{ margin-top:8px; font-size:11.5px; color:var(--faint); font-variant-numeric:tabular-nums; }
+.thinkbox{ margin-top:9px; border-left:3px solid var(--line-2); padding:2px 0 2px 10px; }
+.thinkbox summary{ cursor:pointer; color:var(--muted); font-size:12.5px; }
+.thinkbox .tt{ white-space:pre-wrap; font-size:13px; color:var(--muted); margin-top:5px; font-style:italic; }
+.kv{ display:grid; grid-template-columns:max-content 1fr; gap:3px 12px; font-size:12px; margin-top:6px; }
+.kv .k{ color:var(--faint); } .kv .v{ white-space:pre-wrap; word-break:break-word; }
+.r.util>.b{ color:var(--faint); font-size:12px; padding-top:2px; padding-bottom:2px; }
+.r.util>.b:hover{ color:var(--ink); }
+.r.util.failed>.b{ color:var(--cf); cursor:default; } .r.util.failed>.b button{ margin-left:8px; padding:0 8px; font-size:12px; }
+.aboutbox{ margin:4px 0 8px; padding:10px 12px; border:1px solid var(--line); border-radius:9px; background:var(--raised); cursor:auto; font-size:12.5px; }
+.aboutbox h4{ margin:10px 0 4px; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); font-weight:650; }
+.aboutbox h4:first-child{ margin-top:0; }
+.agchip{ display:inline-flex; align-items:center; gap:5px; border:1px solid var(--line); border-radius:6px; padding:1px 7px 1px 6px; font-size:12px; cursor:pointer; background:var(--surface); margin:0 2px 3px 0; }
+.agchip .n{ color:var(--faint); } .agchip.on{ border-color:var(--accent); }
+.li{ display:flex; gap:7px; padding:2px 4px; border-radius:5px; cursor:pointer; align-items:baseline; }
+.li:hover{ background:var(--sunken); }
+.li .tm{ color:var(--faint); font-variant-numeric:tabular-nums; flex:none; font-size:11.5px; }
+.li .tx{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.r.start>.b{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; cursor:default; padding:8px 10px; margin:4px 0 8px; background:var(--surface); border:1px solid var(--line); }
+.r.start>.b:hover{ background:var(--surface); }
+.r.cchead>.b{ border:1px solid var(--near); background:var(--near-soft); margin:3px 0; cursor:default; }
+.tool{ font:11px ui-monospace,monospace; border:1px solid var(--line-2); border-radius:4px; padding:0 4px; white-space:nowrap; background:var(--sunken); }
+.tool.chat{ border-color:var(--accent); color:var(--accent); }
+.r.turn>.b .x{ color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.turnbody .blk{ margin:6px 0; } .turnbody .lb{ font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--faint); margin-bottom:2px; }
+.turnbody pre{ margin:0; white-space:pre-wrap; word-break:break-word; font-size:12px; background:var(--sunken); padding:6px 8px; border-radius:5px; }
+.turnbody .think{ white-space:pre-wrap; font-style:italic; color:var(--muted); font-size:12.5px; }
+.r.gap{ min-height:12px; }
+.r.gap>.b{ padding:0 8px; font-size:11px; color:transparent; line-height:12px; }
+.r.gap:hover>.b,.r.gap.sel>.b{ color:var(--accent); }
+.r.gap.sel>.b{ background:var(--accent-soft); }
+.home-empty{ color:var(--muted); padding:30px 10px; }
+.skel{ background:linear-gradient(90deg,var(--sunken),var(--line),var(--sunken)); background-size:200% 100%; animation:sk 1.4s infinite; border-radius:5px; }
+@keyframes sk{ to{ background-position:-200% 0; } }
+
+/* ------------------------------ Ask pane ------------------------------ */
+aside.ask{ display:none; flex-direction:column; min-height:0; background:var(--surface); border-left:1px solid var(--line); position:relative; }
+body.ask-open aside.ask{ display:flex; }
+.askresize{ position:absolute; left:-4px; top:0; bottom:0; width:8px; cursor:col-resize; z-index:5; }
+.ahead{ padding:10px 14px 8px; border-bottom:1px solid var(--line); flex:none; }
+.ahead .row1{ display:flex; align-items:center; gap:7px; }
+.ahead select{ font-weight:650; max-width:250px; padding:3px 6px; }
+.ahead .x{ margin-left:auto; }
+.ahead .where{ color:var(--muted); font-size:12.5px; margin-top:3px; }
+.fidchip{ margin-top:8px; border:1px solid var(--line-2); border-left-width:4px; border-radius:8px; padding:5px 9px; font-size:12.5px; cursor:pointer; }
+.fidchip.near{ border-color:var(--near); background:var(--near-soft); } .fidchip.approx{ border-color:var(--approx-edge); background:var(--approx-soft); }
+.fidchip .bd{ font-size:10.5px; font-weight:750; letter-spacing:.06em; margin-right:6px; }
+.fidchip.near .bd{ color:var(--near); } .fidchip.approx .bd{ color:var(--approx); }
+.fidchip .cf{ color:var(--cf); font-size:10.5px; font-weight:750; letter-spacing:.06em; margin-right:6px; }
+.fidchip .more{ color:var(--faint); float:right; }
+.fiddetail{ margin-top:6px; font-size:12.5px; color:var(--muted); cursor:auto; }
+.fiddetail ul{ margin:3px 0 0; padding-left:17px; }
+.fiddetail .w{ margin-top:4px; display:flex; gap:6px; }
+.fiddetail .w .ii{ flex:none; display:inline-grid; place-items:center; width:1.1em; height:1.1em; margin-top:.2em; border:1px solid currentColor; border-radius:50%; font:italic 700 .7em/1 Georgia,serif; } .fiddetail .w.warn{ color:var(--approx); } .fiddetail .w.counterfactual{ color:var(--cf); font-weight:600; }
+.athread{ flex:1; overflow-y:auto; padding:12px 14px; min-height:0; }
+.empty-ask{ color:var(--muted); font-size:13px; }
+.quote{ margin:8px 0; border-left:3px solid var(--line-2); padding:3px 0 3px 10px; color:var(--muted); font-size:12.5px; white-space:pre-line; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; cursor:pointer; }
+.quote.full{ display:block; -webkit-line-clamp:unset; }
+.bubble-q{ margin:14px 0 6px auto; max-width:88%; background:var(--sunken); border-radius:12px 12px 3px 12px; padding:7px 11px; width:fit-content; white-space:pre-wrap; }
+.bubble-q .mode{ font-size:10.5px; color:var(--faint); display:block; }
+.bubble-a{ margin:4px 0 4px; max-width:96%; background:var(--raised); border:1px solid var(--line); border-radius:12px 12px 12px 3px; padding:8px 12px; }
+.bubble-a.err{ border-color:var(--cf); color:var(--cf); }
+.bubble-a .stopw{ color:var(--cf); font-size:12.5px; font-weight:600; margin-bottom:4px; }
+.bubble-a .txt{ white-space:pre-wrap; word-break:break-word; font-size:14px; line-height:1.55; }
+.bubble-a details{ margin-top:6px; font-size:12.5px; } .bubble-a summary{ cursor:pointer; color:var(--muted); }
+.bubble-a details .tt{ white-space:pre-wrap; color:var(--muted); font-style:italic; margin-top:4px; }
+.alinks{ display:flex; gap:10px; flex-wrap:wrap; font-size:11.5px; margin:2px 0 4px 4px; }
+.alinks a{ color:var(--faint); cursor:pointer; text-decoration:none; } .alinks a:hover{ color:var(--ink); text-decoration:underline; }
+.cmp{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px; }
+.cmp>div{ border:1px solid var(--line); border-radius:7px; padding:6px 8px; font-size:12.5px; white-space:pre-wrap; word-break:break-word; }
+.cmp .lb{ font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--faint); margin-bottom:3px; white-space:normal; }
+.spin{ color:var(--muted); font-style:italic; display:flex; align-items:center; gap:7px; }
+.composer{ border-top:1px solid var(--line); padding:9px 14px 12px; flex:none; background:var(--surface); }
+.composer .sugg{ display:flex; flex-wrap:wrap; gap:5px; margin-bottom:8px; }
+.composer .row2{ display:flex; align-items:center; gap:8px; margin-top:7px; }
+.seg{ display:inline-flex; border:1px solid var(--line-2); border-radius:7px; overflow:hidden; }
+.seg button{ border:0; border-radius:0; padding:2px 10px; background:var(--raised); font-size:12.5px; }
+.seg button.on{ background:var(--ink); color:var(--surface); }
+.seg button+button{ border-left:1px solid var(--line-2); }
+.composer .send{ margin-left:auto; }
+.opts{ position:absolute; bottom:64px; left:14px; right:14px; max-width:420px; margin-left:auto; background:var(--raised); border:1px solid var(--line-2); border-radius:10px; box-shadow:var(--shadow); padding:10px 12px; z-index:20; font-size:12.5px; display:none; }
+.opts.on{ display:block; }
+.opts .grid{ display:grid; grid-template-columns:max-content minmax(0,1fr); gap:7px 10px; align-items:center; }
+.opts select{ max-width:100%; min-width:0; }
+.opts .foot{ display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; }
+
+.menu{ position:fixed; z-index:60; background:var(--raised); border:1px solid var(--line-2); border-radius:9px; box-shadow:var(--shadow); padding:6px; min-width:240px; max-height:65vh; overflow-y:auto; font-size:12.5px; }
+.menu .mh{ font-size:10.5px; color:var(--faint); padding:5px 8px 2px; text-transform:uppercase; letter-spacing:.05em; }
+.menu .mi{ display:flex; gap:8px; align-items:center; padding:5px 8px; border-radius:6px; cursor:pointer; }
+.menu .mi:hover{ background:var(--sunken); }
+.menu .mi .r2{ margin-left:auto; color:var(--faint); font-size:11px; }
+.menu input[type=text]{ width:100%; margin:3px 0 5px; }
+.modal-bg{ position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:80; display:flex; align-items:center; justify-content:center; }
+.modal{ width:min(1100px,92vw); height:86vh; background:var(--surface); border-radius:12px; box-shadow:var(--shadow); display:flex; flex-direction:column; overflow:hidden; }
+.modal .mh2{ display:flex; gap:8px; align-items:center; padding:9px 14px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+.modal .src{ font-size:11px; font-weight:700; letter-spacing:.06em; padding:1px 7px; border-radius:3px; border:1px solid var(--line-2); }
+.modal .src.sent{ color:var(--near); border-color:var(--near); }
+.modal .mb{ overflow:auto; padding:12px 16px; flex:1; }
+.modal pre{ white-space:pre-wrap; word-break:break-word; font-size:12px; margin:0; line-height:1.5; }
+.pmsg{ margin-bottom:14px; } .pmsg .role{ font:700 11px ui-monospace,monospace; color:var(--faint); margin-bottom:3px; }
+.qhl{ background:var(--accent-soft); outline:1px solid var(--accent); border-radius:3px; }
+.toast{ position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:var(--ink); color:var(--surface); padding:8px 14px; border-radius:9px; z-index:90; box-shadow:var(--shadow); display:flex; gap:10px; align-items:center; font-size:12.5px; }
+.toast button{ background:transparent; color:inherit; border-color:currentColor; }
+.tip{ position:fixed; z-index:70; pointer-events:none; background:var(--raised); border:1px solid var(--line-2); border-radius:8px; box-shadow:var(--shadow); padding:7px 10px; font-size:12px; max-width:320px; display:none; }
+.help-ov table{ border-collapse:collapse; font-size:12.5px; } .help-ov td{ padding:3px 12px 3px 0; vertical-align:top; }
+body.v-compact .r{ min-height:22px; } body.v-compact .line1{ line-height:17px; } body.v-compact .b{ padding-top:1px; padding-bottom:1px; }
+
+@media (max-width:1100px){
+  body.ask-open .panes{ grid-template-columns:minmax(0,1fr) 0; }
+  body.ask-open aside.ask{ position:fixed; right:0; top:0; bottom:0; width:min(560px,94vw); z-index:50; box-shadow:var(--shadow); }
+}
+@media (max-width:760px){
+  header.top{ padding:0 12px; gap:6px; } .brand{ display:none; }
+  #tl{ padding:4px 12px 140px 6px; }
+  .r.msg>.b .who{ max-width:120px; }
+  body.ask-open aside.ask{ width:100%; }
+  .cmp{ grid-template-columns:1fr; }
+  .hdr-right .opt{ display:none; }
+  .mtext,.linkish,.r.msg .thinkbox{ margin-left:0; }
+  .dnav button{ padding:0 4px; } .dnav .dlab{ display:none; }
+  .r.day .meta{ display:none; } .dayblock>.r.day .meta{ display:inline; font-size:11px; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div class="brand">Village Introspect</div>
+    <div class="searchwrap">
+      <span class="ic">⌕</span>
+      <input id="q" type="text" autocomplete="off" spellcheck="false" placeholder="Search, or jump to a day (447, 2026-06-22)…  press /" aria-label="Search messages or jump to a day">
+      <button id="qclear" class="ghost" title="Clear search (Esc)">✕</button>
+      <div class="suggest" id="suggest"></div>
+    </div>
+    <div class="focuschips" id="focuschips"></div>
+    <div class="hdr-right">
+      <button id="jobs" title="Questions being answered"><span class="pulse"></span><span id="jobsn">0</span></button>
+      <button id="viewbtn" title="Add detail to the view">View ▾</button>
+      <button id="helpbtn" class="ghost opt" title="Keyboard shortcuts (?)">?</button>
+      <button id="themebtn" class="ghost" title="Toggle light/dark">◐</button>
+    </div>
+  </header>
+  <div id="stripband"><div id="stripwrap"><svg id="strip" role="img" aria-label="Messages per day across the whole village, stacked by model family"></svg></div></div>
+  <div class="panes">
+    <div id="tlpane"><div id="tl"></div></div>
+    <aside class="ask" aria-label="Ask a model">
+      <div class="askresize" id="askresize" title="Drag to resize"></div>
+      <div class="ahead" id="ahead"></div>
+      <div class="athread" id="athread"></div>
+      <div class="composer" id="composer"></div>
+      <div class="opts" id="opts"></div>
+    </aside>
+  </div>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+"use strict";
+/* =============================================================================================
+   Village Introspect — one pane by default: a vertical, collapsible, git-branch-style timeline.
+   Lanes = chat rooms (#general is the trunk; #best/#rest/#focus branch off and merge back — the
+   village's real room structure). Goals (eras) → days → messages expand in place. A second pane (Ask)
+   opens on the right only when you ask a model something. Everything else is opt-in (View ▾, search, focus).
+   ============================================================================================= */
+const FG = ['openai','anthropic','google','other'];
+const FGNAME = {anthropic:'Anthropic', openai:'OpenAI', google:'Google', other:'Other'};
+const LANES = [{k:'general', l:'#general'}, {k:'best', l:'#best'}, {k:'rest', l:'#rest'}, {k:'focus', l:'#focus'}, {k:'other', l:'other rooms'}];
+const CC_LANE = LANES.length;                          // an extra lane for an open Claude Code side branch
+const LW = 16, NY = 13;                                // lane width, node y within a row
+const laneOf = room => { const i = LANES.findIndex(l=>l.k===room); return i>=0 ? i : 4; };
+const S = {
+  ov:null, dayIdx:new Map(), activeDays:[], agents:{}, eras:[],
+  days:new Map(), ev:new Map(), loading:new Set(), failed:new Map(),
+  open:{eras:new Set(), days:new Set(), msgs:new Set(), about:new Set(), runs:new Set(), hidden:new Set(), more:new Set(), copies:new Set(), think:new Set()},
+  sel:null, q:'', search:null, dayHits:new Map(), hitsOnly:true,
+  focus:[], only:false, cc:new Map(), ask:null, ctx:null, jobs:new Map(), models:null, stars:[],
+  view:{act:false, strip:false, newest:false, lanes:true, compact:false},
+  startDismissed:false, _curDay:null, _lastHashDay:null,
+};
+const $ = s=>document.querySelector(s);
+const $$ = s=>Array.from(document.querySelectorAll(s));
+const esc = s=>(s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = n=>(n==null?'–':Number(n).toLocaleString('en-US'));
+const sleep = ms=>new Promise(r=>setTimeout(r,ms));
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function ls(k,v){ try{ if(v===undefined) return localStorage.getItem(k); localStorage.setItem(k,v); }catch(e){ return null; } }
+const fgOf = ev => ev.h ? 'human' : (FG.includes(ev.fg) ? ev.fg : 'other');
+const dot = fg => fg==='human' ? '<i class="fd hum"></i>' : `<i class="fd fg-${esc(fg)}"></i>`;
+function shortDate(iso){ if(!iso) return ''; return new Date(iso+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'}); }
+function tsec(t){ if(!t) return 0; const p=t.split(':'); return (+p[0])*3600+(+p[1])*60+(+(p[2]||0)); }
+function agentName(slug){ const a=S.agents[slug]; return a?a.name:(slug||''); }
+function toast(html, ms=5000){ const t=document.createElement('div'); t.className='toast'; t.innerHTML=html; document.body.appendChild(t); setTimeout(()=>t.remove(),ms); return t; }
+const TH_SVG='<svg width="13" height="11" viewBox="0 0 13 11" aria-hidden="true"><path d="M3.2 7.6C1.6 7.6.6 6.5.6 5.2S1.7 2.8 3 2.9C3.4 1.5 4.7.6 6.2.6c1.4 0 2.6.8 3 2 1.8-.1 3.2 1.1 3.2 2.6 0 1.4-1.2 2.4-2.8 2.4z" fill="none" stroke="currentColor" stroke-width="1.1"/><circle cx="2.4" cy="9.6" r="1" fill="currentColor"/></svg>';
+function thKind(th){ return th==='verbatim'?`<span class="g-th" title="the agent's own thinking is logged here">${TH_SVG}</span>`: th==='summary'?`<span class="g-th" title="an OpenAI reasoning summary is logged here">${TH_SVG}<small>S</small></span>`: th==='reasoning'?`<span class="g-th" title="its logged reasoning (reasoning text returned by the provider)">${TH_SVG}<small>R</small></span>`: th?`<span class="g-th" title="thinking logged">${TH_SVG}</span>`:''; }
+function markTerms(html, terms){ if(!terms||!terms.length) return html; let out=html;
+  terms.forEach(t=>{ if(!t) return; const tr=new RegExp(esc(t).replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi');
+    out=out.replace(/(^|>)([^<]*)/g,(m,a,txt)=>a+txt.replace(tr, x=>`<mark>${x}</mark>`)); }); return out; }
+function fmtContent(txt, terms){ const out=[]; const re=/```([\s\S]*?)```/g; let last=0, m;
+  while((m=re.exec(txt))){ out.push(markTerms(esc(txt.slice(last,m.index)),terms)); out.push(`<pre>${esc(m[1].replace(/^\w*\n/,''))}</pre>`); last=re.lastIndex; }
+  out.push(markTerms(esc(txt.slice(last)),terms)); return out.join(''); }
+function span(t0,t1){ const f=(t,wd)=>{ if(!t) return ''; const d=t.slice(0,10), hm=t.slice(11,16); return wd?`${new Date(d+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'})} ${hm}`:hm; };
+  if(!t0||!t1) return ''; return t0.slice(0,10)===t1.slice(0,10) ? `${f(t0)}–${f(t1)}` : `${f(t0,true)} – ${f(t1,true)}`; }
+
+async function api(path, opts){
+  const r = await fetch(path, opts); let j=null;
+  try{ j = await r.json(); }catch(e){ throw new Error(`bad response (${r.status})`); }
+  if(!r.ok){ const e=new Error((j&&j.error)||`HTTP ${r.status}`); e.status=r.status; e.body=j; throw e; }
+  return j;
+}
+const post=(path,body)=>api(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+
+/* ------------------------------------------ boot ------------------------------------------ */
+async function boot(){
+  loadViewPrefs(); wire();
+  const t0=Date.now();
+  for(;;){
+    let st=null; try{ st=await api('/api/status'); }catch(e){ st={stage:'server unreachable'}; }
+    if(st && st.ready) break;
+    if(st && st.stage==='error'){ $('#tl').innerHTML=`<div class="home-empty">Server error: ${esc(st.error||'')}</div>`; return; }
+    $('#tl').innerHTML = `<div class="home-empty"><div class="spin"><span class="pulse"></span>Loading the village… <b>${esc(st&&st.stage||'')}</b> · ${Math.round((Date.now()-t0)/1000)}s</div>
+      <div class="faint" style="margin-top:6px">The server indexes ~380k events on start (about 1–2 minutes).</div>
+      ${Array.from({length:12},(_,i)=>`<div class="skel" style="height:26px;margin:9px 0 9px ${18+(i%3)*14}px;opacity:${1-i*.07}"></div>`).join('')}</div>`;
+    await sleep(1500);
+  }
+  S.ov = await api('/api/overview'); indexOverview();
+  api('/api/models').then(m=>{ S.models=m; }).catch(()=>{});
+  api('/api/stars').then(s=>{ S.stars=s||[]; }).catch(()=>{});
+  api('/api/jobs').then(js=>{ (js||[]).forEach(j=>{ if(j.status==='queued'||j.status==='running') trackJob(j.job_id, j.probe_id, null); }); }).catch(()=>{});
+  new ResizeObserver(()=>drawStrip()).observe($('#stripwrap'));
+  window.addEventListener('hashchange', applyHash);
+  let _rw=innerWidth; window.addEventListener('resize', ()=>{ if((_rw<760)!==(innerWidth<760)) render(); _rw=innerWidth; });
+  document.body.dataset.ready='1';
+  await applyHash();
+}
+function indexOverview(){
+  const ov=S.ov;
+  ov.days.forEach(d=>S.dayIdx.set(d.day,d));
+  S.activeDays = ov.days.map(d=>d.day).sort((a,b)=>a-b);
+  ov.agents.forEach(a=>{ S.agents[a.slug]=a; });
+  // per-era aggregates + lanes (rooms with ≥1% of the era's messages)
+  S.eras = ov.eras.map((e,i)=>{
+    const ds = S.activeDays.filter(d=>d>=e.start_day && d<=e.end_day).map(d=>S.dayIdx.get(d));
+    const rooms={}, fg={openai:0,anthropic:0,google:0,other:0}; let n=0, help=0, cc=0;
+    ds.forEach(d=>{ Object.entries(d.rooms||{}).forEach(([k,v])=>{ rooms[k]=(rooms[k]||0)+v; }); FG.forEach(f=>fg[f]+=(d.fg[f]||0)); n+=d.n_msgs; help+=d.n_help||0; cc+=d.cc?1:0; });
+    const tot=Object.values(rooms).reduce((a,b)=>a+b,0)||1;
+    const lanes=new Set([0]); Object.entries(rooms).forEach(([k,v])=>{ if(v/tot>=0.01) lanes.add(laneOf(k)); });
+    return Object.assign({}, e, {i, days:ds.map(d=>d.day), rooms, fg, n, help, cc, lanes, quietTrunk: !(rooms.general>0)});
+  });
+  S.eras.forEach(e=>e.days.forEach(d=>{ S.dayIdx.get(d)._era=e.i; }));
+}
+function dayLanes(d){
+  const x=S.dayIdx.get(d); const lanes=new Set([0]); if(!x) return lanes;
+  const tot=Object.values(x.rooms||{}).reduce((a,b)=>a+b,0)||1;
+  Object.entries(x.rooms||{}).forEach(([k,v])=>{ if(v>=3 || v/tot>=0.02) lanes.add(laneOf(k)); });
+  return lanes;
+}
+
+/* ------------------------------------------ view prefs ------------------------------------------ */
+function loadViewPrefs(){ try{ Object.assign(S.view, JSON.parse(ls('viewPrefs')||'{}')); }catch(e){} S.startDismissed = ls('startDismissed')==='1'; applyViewClasses(); }
+function saveViewPrefs(){ ls('viewPrefs', JSON.stringify(S.view)); applyViewClasses(); }
+function applyViewClasses(){ document.body.classList.toggle('v-strip', !!S.view.strip); document.body.classList.toggle('v-compact', !!S.view.compact); }
+
+/* ------------------------------------------ routing ------------------------------------------ */
+// #/                       collapsed timeline
+// #/day/447?m=<ei>&q=&focus=a,b&only=1&cc=<seg>[@<ei>]&ask=<spec>
+// #/probe/<id>
+function parseHash(){
+  const h=location.hash.replace(/^#/,'')||'/'; const [path,qs]=h.split('?'); const p=new URLSearchParams(qs||'');
+  const seg=path.split('/').filter(Boolean); const r={view:'home', p};
+  if(seg[0]==='day' && seg[1]){ r.view='day'; r.day=+seg[1]; }
+  else if(seg[0]==='probe' && seg[1]){ r.view='probe'; r.probe=seg[1]; }
+  return r;
+}
+function buildHash(){
+  const p=new URLSearchParams();
+  if(S.sel && S.sel.startsWith('m')) p.set('m', S.sel.slice(1));
+  if(S.q) p.set('q', S.q);
+  if(S.focus.length) p.set('focus', S.focus.join(','));
+  if(S.only) p.set('only','1');
+  const C=[...S.cc.values()][0]; if(C) p.set('cc', C.seg_id+(C.anchor!=='about'?'@'+C.anchor:''));
+  if(S.ask && S.ask.spec) p.set('ask', encodeAsk(S.ask.spec));
+  const d=S._curDay; const qs=p.toString();
+  return '#'+(d!=null?`/day/${d}`:'/')+(qs?'?'+qs:'');
+}
+function pushHash(){ const h=buildHash(); if(h!==location.hash) location.hash=h; }
+function replaceHash(){ const h=buildHash(); if(h!==location.hash) history.replaceState(null,'',h); }
+function encodeAsk(s){ return s.target==='cc' ? (s.at_ei!=null?`ccat.${s.at_ei}.${s.anchor||'after'}`:`cc.${s.seg_id}.${s.seq}`) : `tierb.${s.agent}.${s.ei}.${s.anchor||'after'}`; }
+function decodeAsk(x){ if(!x) return null; const p=x.split('.');
+  if(p[0]==='cc' && p.length>=3) return {target:'cc', seg_id:+p[1], seq:+p[2]};
+  if(p[0]==='ccat') return {target:'cc', at_ei:+p[1], anchor:p[2]==='before'?'before':'after'};
+  if(p[0]==='tierb' && p.length>=4) return {target:'tierb', agent:p.slice(1,-2).join('.'), ei:+p[p.length-2], anchor:p[p.length-1]};
+  return null; }
+let _applying=false;
+async function applyHash(){
+  if(_applying) return; _applying=true;
+  try{
+    const r=parseHash(), p=r.p;
+    const navigated = r.view==='day' && (r.day!==S._lastHashDay || (p.get('m')!=null && 'm'+p.get('m')!==S.sel));
+    S.focus=(p.get('focus')||'').split(',').filter(Boolean); S.only=p.get('only')==='1';
+    renderFocusChips();
+    const q=p.get('q')||'';
+    if(q!==S.q){ S.q=q; $('#q').value=q; if(q) await runSearch(q,{fromHash:true}); else clearSearch(true); }
+    if(r.view==='probe'){ await openProbePermalink(r.probe); return; }
+    if(r.view==='day'){
+      S._curDay=r.day;
+      if(r.day!==S._lastHashDay){                      // navigating TO a day (deep link / goto): reveal it + its moment
+        await revealDay(r.day);
+        const m=p.get('m'); if(m!=null) S.sel='m'+m;
+      }
+      const cc=p.get('cc');
+      if(cc){ const [seg,anc]=cc.split('@'); const anchor = anc!=null ? +anc : 'about'; const C=[...S.cc.values()][0];
+        if(!C || C.seg_id!==+seg || C.anchor!==anchor) await openCCBranch(+seg, anchor, r.day, {silent:true}); }
+    } else { S._curDay=null; }
+    S._lastHashDay = r.view==='day' ? r.day : null;
+    render(navigated ? {scrollTo: S.sel ? {key:S.sel} : {key:'d'+r.day, frac:0}} : {});
+    const ask=decodeAsk(p.get('ask'));
+    if(ask){ if(!S.ask || encodeAsk(S.ask.spec)!==encodeAsk(ask)) openAsk(ask,{fromHash:true}); }
+    else if(S.ask) closeAsk(true);
+  } finally { _applying=false; }
+}
+async function revealDay(day){ const x=S.dayIdx.get(day); if(!x) return; S.open.days=new Set([day]); S.failed.delete(day); await ensureDay(day); }
+function goto(day, ei){
+  S._curDay=day; if(ei!=null) S.sel='m'+ei;
+  revealDay(day).then(()=>{ render({scrollTo: ei!=null ? {key:'m'+ei, pulse:true} : {key:'d'+day, frac:0}}); S._lastHashDay=day; pushHash(); });
+}
+/* ------------------------------------------ data ------------------------------------------ */
+async function ensureDay(day){
+  if(S.days.has(day)) return S.days.get(day);
+  if(S.loading.has(day)){ while(S.loading.has(day)) await sleep(80); return S.days.get(day); }
+  S.loading.add(day);
+  try{ const d=await api('/api/day?full=1&day='+day); S.days.set(day,d); S.failed.delete(day); if(S.q) loadDayHits(day); return d; }   // full text: messages show expanded
+  catch(e){ S.failed.set(day, e.message); toast(`Couldn't load day ${esc(day)}: ${esc(e.message)}`); return null; }   // buildRows shows a Retry row; no automatic re-request
+  finally{ S.loading.delete(day); }
+}
+async function getEvent(ei){ if(S.ev.has(ei)) return S.ev.get(ei); const e=await api('/api/event?ei='+ei); S.ev.set(ei,e); return e; }
+function findEv(ei){ for(const D of S.days.values()){ const e=D.events.find(x=>x.ei===ei); if(e) return {e, D}; } return null; }
+
+/* ------------------------------------------ build the visible rows ------------------------------------------ */
+/* Days grouped under goal labels; ONE day open at a time, its messages shown expanded below it. */
+function buildRows(){
+  const rows=[];
+  if(!S.startDismissed && !S.q) rows.push({t:'start', key:'start', lanes:new Set(), node:null});
+  const eras = S.view.newest ? S.eras.slice().reverse() : S.eras;
+  const hits = S.search ? S.search.per_day : null;
+  eras.forEach(e=>{
+    let days = (S.view.newest ? e.days.slice().reverse() : e.days.slice()).filter(d=>S.view.act || S.dayIdx.get(d).n_msgs>0 || S.open.days.has(d));
+    if(!days.length) return;
+    const eh = hits ? e.days.reduce((s,d)=>s+(hits[d]||0),0) : 0;
+    if(hits && S.hitsOnly){ days = days.filter(d=>hits[d] || S.open.days.has(d)); if(!days.length) return; }
+    rows.push({t:'goal', key:'e'+e.i, era:e, lanes:new Set(e.lanes), node:0, quiet:e.quietTrunk, hits:eh});
+    days.forEach(d=>{
+      const dl=dayLanes(d); const x=S.dayIdx.get(d); const open=S.open.days.has(d);
+      rows.push({t:'day', key:'d'+d, day:d, lanes:dl, node:0, quiet:!(x.rooms&&x.rooms.general), hits:hits?(hits[d]||0):0, nohit:!!hits && !hits[d], block:open?'start':null});
+      if(!open) return;
+      const D=S.days.get(d);
+      if(!D && S.failed.has(d)){ rows.push({t:'util', key:'L'+d, lanes:dl, node:null, text:`Couldn't load day ${d}: ${S.failed.get(d)}`, retry:d, block:'end'}); return; }
+      if(!D){ rows.push({t:'util', key:'L'+d, lanes:dl, node:null, text:'loading…', block:'end'}); if(!S.loading.has(d)) ensureDay(d).then(()=>render()); return; }
+      rows.push({t:'about', key:'a'+d, day:d, lanes:dl, node:0});
+      const ccA=S.cc.get('about:'+d); if(ccA) pushCC(rows, ccA, dl);
+      pushMessages(rows, D, dl);
+      rows.push({t:'dayend', key:'z'+d, day:d, lanes:dl, node:null, block:'end'});
+    });
+  });
+  return rows;
+}
+function roomKey(room){ return room || 'general'; }
+function msgRow(e, dl, extra){ const ln=laneOf(roomKey(e.room)); return Object.assign({t:'msg', key:'m'+e.ei, ev:e, lanes:dl.has(ln)?dl:new Set([...dl, ln]), node:ln}, extra||{}); }
+/* The same text posted in several rooms within 2h (e.g. a goal announcement re-posted to #best and
+   #rest) folds into its first copy, which says where else it went; the copies open on demand. */
+function crossPosts(D){
+  if(D._xp) return D._xp;
+  const norm=c=>(c||'').replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/\s+/g,' ').trim().toLowerCase();
+  const first=new Map(), copyOf=new Map(), copies=new Map();
+  D.events.forEach(e=>{ if(e.k!=='c' || (e.c||'').length<40) return; const k=norm(e.c); const g=first.get(k);
+    if(g && tsec(e.t)-tsec(g.e.t)<=7200 && !g.rooms.has(e.room)){ g.rooms.add(e.room); copyOf.set(e.ei, g.e.ei); copies.get(g.e.ei).push(e); }
+    else if(!g){ first.set(k, {e, rooms:new Set([e.room])}); copies.set(e.ei, []); } });
+  D._xp={copyOf, copies}; return D._xp;
+}
+function pushMessages(rows, D, dl){
+  const hs=S.dayHits.get(D.day); const filterHits = S.search && S.hitsOnly && hs;
+  const focused = e => S.focus.includes(e.slug);
+  const xp=crossPosts(D); const multi=Object.keys((D.stats||{}).rooms||{}).length>1;
+  const shown=[]; let hidden=[]; let run=null;
+  const flushHidden=()=>{ if(!hidden.length) return; const key='h'+hidden[0].ei; if(S.open.hidden.has(key)) hidden.forEach(e=>shown.push({e})); else shown.push({hidden:hidden.slice(), key}); hidden=[]; };
+  const flushRun=()=>{ if(!run) return; flushHidden(); shown.push({run}); run=null; };
+  D.events.forEach(e=>{
+    if(e.k==='a'){
+      if(e.type==='REQUEST_HUMAN_HELPER'){ flushRun(); flushHidden(); shown.push({e}); return; }
+      if(!S.view.act) return;
+      if(!run) run=[]; run.push(e); return;
+    }
+    flushRun();
+    const cp=xp.copyOf.get(e.ei); if(cp!=null && !S.open.copies.has(cp)) return;          // a folded cross-post copy
+    const keep = (!filterHits || hs.has(e.ei) || S.sel==='m'+e.ei) && (!S.only || !S.focus.length || focused(e) || e.hc==='operator' || S.sel==='m'+e.ei);
+    if(keep){ flushHidden(); shown.push({e}); } else hidden.push(e);
+  });
+  flushRun(); flushHidden();
+  let lastT=null;
+  shown.forEach(s=>{
+    if(s.hidden){ rows.push({t:'util', key:s.key, lanes:dl, node:null, text:`⋯ ${s.hidden.length} message${s.hidden.length>1?'s':''} hidden${S.only&&S.focus.length?' (other agents)':' (no match)'} — show`, act:'unhide', arg:s.key}); return; }
+    if(s.run){ const k='r'+s.run[0].ei; const open=S.open.runs.has(k);
+      rows.push({t:'util', key:k, lanes:dl, node:null, act:'run', arg:k, text: open ? `▾ ${s.run.length} activity event${s.run.length>1?'s':''}` : `⋯ ${s.run.length} activity · ${s.run.slice(0,2).map(e=>e.sp+' '+e.s).join(' · ').slice(0,150)}${s.run.length>2?` +${s.run.length-2}`:''}`});
+      if(open) s.run.forEach(e=>rows.push(msgRow(e, dl, {multi})));
+      return; }
+    const e=s.e;
+    if(lastT && tsec(e.t)-tsec(lastT)>3600) rows.push({t:'util', key:'q'+e.ei, lanes:dl, node:null, quiet:true, text:`— ${Math.round((tsec(e.t)-tsec(lastT))/3600)}h quiet —`});
+    lastT=e.t;
+    rows.push(msgRow(e, dl, {multi, copies:xp.copies.get(e.ei), copyOf:xp.copyOf.get(e.ei)}));
+    const cc=S.cc.get('m:'+e.ei); if(cc) pushCC(rows, cc, dl);
+  });
+}
+function pushCC(rows, C, dl){
+  const lanes=new Set([...dl, CC_LANE]);
+  rows.push({t:'cchead', key:'ch'+C.seg_id, cc:C, lanes, node:CC_LANE});
+  if(!C.W){ rows.push({t:'util', key:'cl'+C.seg_id, lanes, node:null, text:'loading Claude Code window…'}); return; }
+  const turns=C.W.turns;
+  turns.forEach((t,i)=>{
+    rows.push({t:'gap', key:`cg${C.seg_id}.${i}`, cc:C, seq:t.anchor_before, label: i===0?'Ask here — before turn #0 decides':`Ask here — after #${i-1}'s results, before #${i} decides`, lanes, node:null});
+    rows.push({t:'turn', key:`ct${C.seg_id}.${i}`, cc:C, turn:t, i, lanes, node:CC_LANE});
+  });
+  if(turns.length){ const l=turns[turns.length-1]; rows.push({t:'gap', key:`cg${C.seg_id}.end`, cc:C, seq:l.anchor_after, label:`Ask here — after #${l.turn}'s results (end of window)`, lanes, node:null}); }
+  rows.push({t:'util', key:'ce'+C.seg_id, lanes, node:null, text:'▲ close Claude Code window', act:'ccclose', arg:C.key, mergeCC:true});
+}
+
+/* ------------------------------------------ render ------------------------------------------ */
+let _rows=[], _lay=null;
+function render(opts={}){
+  if(!S.ov) return;
+  // either jump to a target row (navigation) or keep the user's place (everything else)
+  const target = opts.scrollTo || null;
+  const anchor = target ? null : ((opts.pin && rowTop(opts.pin)) || selAnchor() || topAnchor());
+  _rows=buildRows();
+  const used=new Set(); _rows.forEach(r=>r.lanes.forEach(l=>used.add(l)));
+  const cols = lanesOn() ? [...used].sort((a,b)=>a-b) : (used.has(CC_LANE) ? [0, CC_LANE] : [0]);
+  if(!cols.length) cols.push(0);
+  const colX=new Map(cols.map((l,i)=>[l, i*LW+LW/2]));
+  const gw=cols.length*LW;
+  const parts=[]; const head = lanesOn() && cols.length>1;
+  if(head) parts.push(`<div class="lanehead" title="Each line is a chat room: #general is the trunk; rooms branch off when the village split and merge back when everyone returned. (View ▾ → Room lanes turns this off.)">${cols.map(l=>`<div class="lh"><span>${esc(l===CC_LANE?'Claude Code':LANES[l].l)}</span></div>`).join('')}</div>`);
+  document.documentElement.style.setProperty('--lh-h', head ? '52px' : '0px');
+  _rows.forEach((r,i)=>{ if(r.block==='start') parts.push('<section class="dayblock">'); parts.push(rowHTML(r, _rows[i-1], _rows[i+1], cols, colX, gw)); if(r.block==='end') parts.push('</section>'); });
+  _lay={cols, colX, gw};
+  $('#tl').innerHTML = parts.join('') || '<div class="home-empty">Nothing to show.</div>';
+  const apply = ()=> target ? scrollToKey(target.key, false, target.frac ?? 0.25) : restoreAnchor(anchor);
+  apply(); requestAnimationFrame(()=>requestAnimationFrame(apply));   // re-apply once fonts/wrapping settle
+  if(target && target.pulse) scrollToKey(target.key, true, target.frac ?? 0.25);
+  drawStrip();
+}
+function patchRow(key){
+  const i=_rows.findIndex(x=>x.key===key); const el=document.querySelector(`#tl .r[data-key="${CSS.escape(key)}"]`);
+  if(i<0 || !el || !_lay){ render({pin:key}); return; }
+  const tmp=document.createElement('div'); tmp.innerHTML=rowHTML(_rows[i], _rows[i-1], _rows[i+1], _lay.cols, _lay.colX, _lay.gw);
+  el.replaceWith(tmp.firstElementChild);
+}
+function setSel(key){ const old=S.sel; S.sel=key; if(old&&old!==key){ const o=document.querySelector(`#tl .r[data-key="${CSS.escape(old)}"]`); if(o) o.classList.remove('sel'); }
+  const n=document.querySelector(`#tl .r[data-key="${CSS.escape(key)}"]`); if(n) n.classList.add('sel'); }
+function selAnchor(){ if(!S.sel) return null; const a=rowTop(S.sel); if(!a) return null; const h=$('#tlpane').clientHeight; return (a.off>-10 && a.off<h-10) ? a : null; }
+function rowTop(key){ const el=document.querySelector(`#tl .r[data-key="${CSS.escape(key)}"]`); if(!el) return null; return {key, off:el.getBoundingClientRect().top - $('#tlpane').getBoundingClientRect().top}; }
+function lanesOn(){ return S.view.lanes && window.innerWidth >= 760; }
+function laneSet(r){ if(lanesOn()) return r.lanes; if(!r.lanes.size) return new Set(); return r.lanes.has(CC_LANE) ? new Set([0, CC_LANE]) : new Set([0]); }
+function gutter(r, prev, next, cols, colX, gw){
+  const L=laneSet(r), P=prev?laneSet(prev):new Set(), N=next?laneSet(next):new Set();
+  const node = r.node==null ? null : (lanesOn() || r.node===CC_LANE ? r.node : 0);
+  const nx = node!=null ? colX.get(node) : null;
+  const inCtx = S.ctx && r.t==='msg' && inContext(r.ev);
+  let s='';
+  cols.forEach(l=>{
+    if(!L.has(l)) return;
+    const x=colX.get(l); const q=(l===0 && r.quiet)?' q':''; const hasP=P.has(l), hasN=N.has(l); const c=(inCtx && l===node)?' ctx':'';
+    if(l===node || node==null){
+      if(hasP) s+=`<line class="ln${q}${c}" x1="${x}" y1="0" x2="${x}" y2="${NY}"/>`;
+      else if(node!=null && l!==0 && r.t!=='cchead' && colX.has(0) && L.has(0)) s+=`<path class="ln" d="M${colX.get(0)} ${NY-2} C ${colX.get(0)} ${NY+4}, ${x} ${NY-6}, ${x} ${NY}"/>`;
+      if(hasN) s+=`<line class="ln${q}${c}" x1="${x}" y1="${NY}" x2="${x}" y2="100%"/>`;
+    } else {
+      // a lane passing a node row: branches out of the node if it starts here, merges into it if it ends here
+      if(hasP) s+=`<line class="ln" x1="${x}" y1="0" x2="${x}" y2="${hasN?'100%':NY-4}"/>`;
+      if(!hasP && nx!=null){ s+=`<path class="ln" d="M${nx} ${NY} C ${nx} ${NY+8}, ${x} ${NY+2}, ${x} ${NY+12}"/>`; if(hasN) s+=`<line class="ln" x1="${x}" y1="${NY+12}" x2="${x}" y2="100%"/>`; }
+      if(hasP && !hasN && nx!=null) s+=`<path class="ln" d="M${x} ${NY-4} C ${x} ${NY+2}, ${nx} ${NY-6}, ${nx} ${NY}"/>`;
+    }
+  });
+  if(node!=null && nx!=null){
+    if(r.t==='goal') s+=`<circle cx="${nx}" cy="${NY+6}" r="5" fill="var(--ink)" stroke="var(--bg)" stroke-width="2"/>`;
+    else if(r.t==='day') s+=`<circle cx="${nx}" cy="${NY}" r="4.2" fill="var(--bg)" stroke="var(--ink)" stroke-width="1.6"/>`;
+    else if(r.t==='about') s+=`<circle cx="${nx}" cy="${NY}" r="2.4" fill="var(--faint)"/>`;
+    else if(r.t==='msg'){ const e=r.ev; const fg=fgOf(e); const col=fg==='human'?'var(--f-human)':`var(--f-${fg})`;
+      if(e.hc==='operator') s+=`<rect x="${nx-4}" y="${NY-4}" width="8" height="8" rx="1.5" fill="var(--ink)"/>`;
+      else if(e.k==='a' && e.type==='REQUEST_HUMAN_HELPER') s+=`<path d="M${nx} ${NY-5} l4.5 5 l-4.5 5 l-4.5 -5 z" fill="var(--cf)"/>`;
+      else if(e.k==='a') s+=`<circle cx="${nx}" cy="${NY}" r="2.2" fill="var(--faint)"/>`;
+      else if(e.h) s+=`<circle cx="${nx}" cy="${NY}" r="3.4" fill="var(--bg)" stroke="${col}" stroke-width="1.5"/>`;
+      else s+=`<circle cx="${nx}" cy="${NY}" r="3.8" fill="${col}" stroke="var(--bg)" stroke-width="1.5"/>`; }
+    else if(r.t==='turn') s+=`<circle cx="${nx}" cy="${NY}" r="3.2" fill="var(--near)"/>`;
+    else if(r.t==='cchead') s+=`<rect x="${nx-4.5}" y="${NY-4.5}" width="9" height="9" rx="2" fill="var(--near)"/>`;
+  }
+  if(r.t==='cchead' && colX.has(CC_LANE)){ const x=colX.get(CC_LANE); const pn = prev && prev.node!=null ? (lanesOn()?prev.node:0) : 0; const src=colX.get(pn)??colX.get(0);
+    if(src!=null) s+=`<path class="ln" d="M${src} 0 C ${src} ${NY-2}, ${x} ${NY-8}, ${x} ${NY}"/>`; }
+  if(r.mergeCC && colX.has(CC_LANE) && colX.has(0)){ const x=colX.get(CC_LANE); s+=`<path class="ln" d="M${x} 0 C ${x} ${NY}, ${colX.get(0)} ${NY-4}, ${colX.get(0)} ${NY+10}"/>`; }
+  return `<div class="g" style="width:${gw+6}px"><svg width="${gw+6}" aria-hidden="true">${s}</svg></div>`;
+}
+function rowHTML(r, prev, next, cols, colX, gw){
+  const g = r.t==='start' ? `<div class="g" style="width:${gw+6}px"></div>` : gutter(r, prev, next, cols, colX, gw);
+  const open=(r.t==='day'&&S.open.days.has(r.day))||(r.t==='about'&&S.open.about.has(r.day))||(r.t==='turn'&&r.cc.open.has(r.i))||(r.t==='msg'&&r.ev.k==='a'&&S.open.msgs.has(r.ev.ei));
+  const cls=['r', r.t]; if(open) cls.push('open'); if(S.sel===r.key) cls.push('sel'); if(r.nohit) cls.push('nohit');
+  let b='';
+  if(r.t==='start'){
+    const ms=(S.ov.moments||[]);
+    b=`<span class="faint">Start here:</span>${ms.map((m,i)=>`<span class="chip" data-moment="${i}" title="${esc(m.note||'')}">${esc(m.title)} <span class="faint">${m.day_from===m.day_to?`d${esc(m.day_from)}`:`d${esc(m.day_from)}–${esc(m.day_to)}`}</span></span>`).join('')}
+      <span class="faint" style="font-size:12px">…or click any day below.</span><button class="ghost" data-dismiss style="margin-left:auto" title="Hide (View ▾ brings it back)">✕</button>`;
+  } else if(r.t==='goal'){
+    const e=r.era; const foc=focusCount(e.days);
+    b=`<div class="line1"><span class="t" title="${esc(e.label)} — the operators' goal for these days">${esc(e.label)}</span>${e.approx?'<span class="tag" title="boundaries approximate (detected from an operator announcement)">auto</span>':''}
+      <span class="meta">d${esc(e.start_day)}${e.end_day!==e.start_day?'–'+esc(e.end_day):''} · ${e.days.length} day${e.days.length>1?'s':''}</span>${r.hits?`<span class="badge hit">${fmt(r.hits)} hits</span>`:''}${foc?`<span class="badge foc" title="messages from focused agents">${fmt(foc)}</span>`:''}</div>`;
+  } else if(r.t==='day'){
+    const x=S.dayIdx.get(r.day); const foc=focusCount([r.day]); const pr=(S.ov.probes_by_day||{})[r.day];
+    const hl = x.headline&&x.headline.text ? (x.headline.kind==='operator'?'op: ':'')+x.headline.text : '';
+    const prev=S.activeDays.filter(d=>d<r.day).pop(), nxt=S.activeDays.find(d=>d>r.day);
+    b=`<div class="line1"><span class="tw"><span class="caret">▸</span></span><span class="t">Day ${esc(r.day)}</span><span class="meta">${esc(shortDate(x.date))} · ${fmt(x.n_msgs)} msgs · ${esc(x.n_agents)} agents</span>
+      ${open?'':`<span class="sub" title="${esc(hl)}">${esc(hl)}</span>`}
+      ${r.hits?`<span class="badge hit">${fmt(r.hits)}</span>`:''}${foc?`<span class="badge foc">${fmt(foc)}</span>`:''}${x.cc?'<span class="badge cc">CC</span>':''}${x.n_help?`<span class="badge help">◆ ${esc(x.n_help)}</span>`:''}${pr?`<span class="badge" title="questions asked here">● ${esc(pr)}</span>`:''}
+      ${open?`<span class="dnav">${prev!=null?`<button class="ghost" data-daynav="${esc(prev)}" title="previous day ([)">‹<span class="dlab"> d${esc(prev)}</span></button>`:''}${nxt!=null?`<button class="ghost" data-daynav="${esc(nxt)}" title="next day (])"><span class="dlab">d${esc(nxt)} </span>›</button>`:''}<button class="ghost" data-dayclose="${esc(r.day)}" title="close this day (←)">✕</button></span>`:''}</div>`;
+  } else if(r.t==='about'){
+    b=`<div class="line1"><span class="tw"><span class="caret">▸</span></span><span class="sub">About this day — goal, who's around, who was talked about, humans${S.dayIdx.get(r.day).cc?', Claude Code windows':''}</span></div>${S.open.about.has(r.day)?aboutHTML(r.day):''}`;
+  } else if(r.t==='dayend'){
+    const nxt=S.activeDays.find(d=>d>r.day);
+    b=`<div class="line1"><span class="tw"></span><button class="ghost" data-dayclose="${esc(r.day)}">▲ close Day ${esc(r.day)}</button>${nxt!=null?`<button class="ghost" data-daynav="${esc(nxt)}">next: Day ${esc(nxt)} ›</button>`:''}</div>`;
+  } else if(r.t==='msg'){
+    const e=r.ev; b=msgHTML(r);
+    if(S.focus.includes(e.slug)) cls.push('foc'); if(e.hc==='operator') cls.push('op'); if(e.hc==='automated') cls.push('auto'); if(e.k==='a') cls.push('act'); if(e.k==='a'&&e.type==='REQUEST_HUMAN_HELPER') cls.push('help');
+    if(isHit(e.ei)) cls.push('hitrow');
+    if(S.ctx){ if(S.ctx.anchor===e.ei) cls.push('anchor'); else if(inContext(e)) cls.push('inctx'); }
+  } else if(r.t==='util'){ if(r.retry!=null) cls.push('failed');
+    b=`<div class="line1"><span class="tw"></span><span${r.quiet?' style="font-style:italic"':''}>${esc(r.text)}</span>${r.retry!=null?`<button data-retryday="${esc(r.retry)}" title="Request this day again">Retry</button>`:''}</div>`; }
+  else if(r.t==='cchead'){ const C=r.cc, s=C.W?C.W.summary:null;
+    b=`<div class="line1"><span class="badge cc">NEAR-FAITHFUL</span><b>Claude Code window #${esc(C.seg_id)}</b><span class="meta">${s?`${esc(s.n_turns)} turns · ${esc((s.start||'').slice(11,16))}–${esc((s.end||'').slice(11,16))} · ${esc(ccBoundaryText(s.boundary))}`:''}</span>
+      ${s&&s.prev_seg_id!=null?`<button class="ghost" data-ccnav="${esc(s.prev_seg_id)}" title="previous window">◀</button>`:''}${s&&s.next_seg_id!=null?`<button class="ghost" data-ccnav="${esc(s.next_seg_id)}" title="next window">▶</button>`:''}<button class="ghost" data-ccclose="${esc(C.key)}" title="close">✕</button></div>
+      <div class="faint" style="font-size:12px">Its real turns, replayed. Hover between two turns and click "Ask here" to ask it at that exact point.</div>`; }
+  else if(r.t==='gap'){ if(S.ask && S.ask.spec.target==='cc' && S.ask.spec.seg_id===r.cc.seg_id && S.ask.spec.seq===r.seq) cls.push('sel'); b=`<span>${esc(r.label)} ▸</span>`; }
+  else if(r.t==='turn'){ const t=r.turn; const tools=t.actions.map(a=>`<span class="tool${/chat_message/.test(a.name)?' chat':''}">${esc(a.name.replace('mcp__village__',''))}</span>`).join(' ');
+    const first=(t.text||t.thinking||'').split('\n').find(x=>x.trim())||'';
+    b=`<div class="line1"><span class="tw"><span class="caret">▸</span></span><span class="meta">#${esc(t.turn)} ${esc((t.created_at||'').slice(11,19))}</span>${tools}<span class="x">${esc(first.slice(0,160))}</span>${(t.chat_ei||[]).map(ei=>`<a class="faint" data-chatlink="${esc(ei)}" title="the chat message this turn posted">→ chat</a>`).join(' ')}</div>${r.cc.open.has(r.i)?`<div class="detail turnbody">${turnBody(t)}</div>`:''}`; }
+  return `<div class="${cls.join(' ')}" data-key="${esc(r.key)}">${g}<div class="b">${b}</div></div>`;
+}
+/* How a Claude Code window begins. A compaction window opens with Claude Code's own compaction summary, which is
+   replayed; an `init` window is the same conversation resumed, and what came before it is not replayed. */
+function ccBoundaryText(b){ return b==='compact' ? "begins with Claude Code's compaction summary (replayed)" : b==='init' ? 'resumed session: its earlier context is not replayed' : b==='start' ? 'first window in the log' : String(b||''); }
+function focusCount(days){ if(!S.focus.length) return 0; const pres=S.ov.presence||{}; let n=0; S.focus.forEach(s=>{ const m=pres[s]||{}; days.forEach(d=>{ n+=m[d]||0; }); }); return n; }
+function isHit(ei){ for(const s of S.dayHits.values()) if(s.has(ei)) return true; return false; }
+/* A message, shown expanded: header line, full text (very long ones clamped), then small links. */
+function msgHTML(r){
+  const e=r.ev; const terms=S.search?S.search.terms:null;
+  if(e.k==='a'){   // activity (View ▾) and help requests: one line; click to see details
+    const open=S.open.msgs.has(e.ei);
+    return `<div class="line1"><span class="tm">${esc(e.t.slice(0,5))}</span><span class="who">${esc(e.sp)}</span><span class="pv">${esc((e.type==='REQUEST_HUMAN_HELPER'?'◆ help request · ':'')+e.s)}</span><span class="gly">${thKind(e.th)}</span></div>${open?`<div class="detail" data-detail="${esc(e.ei)}">${detailHTML(e)}</div>`:''}`;
+  }
+  if(e.hc==='automated') return `<div class="line1"><span class="tm">${esc(e.t.slice(0,5))}</span><span class="who">automated</span><span class="pv">${esc(e.c||'')}</span></div>`;
+  const txt=e.c||''; const lines=txt.split('\n').length; const long = txt.length>1500 || lines>14; const more=S.open.more.has(e.ei);
+  const gly=[thKind(e.th), e.p==='cc'?'<span class="g-cc" title="Claude Code agent — near-faithful replay available">CC</span>':'', e.n_probes?`<span class="g-pr" title="asked ${esc(e.n_probes)}×">●${esc(e.n_probes)}</span>`:'', e.star?'<span class="g-pr">★</span>':''].join('');
+  const room = (r.multi || !lanesOn()) && e.room ? `<span class="room">#${esc(e.room)}</span>` : '';
+  const canAsk = !e.h;
+  const xp = r.copies && r.copies.length ? `<button class="linkish" data-copies="${esc(e.ei)}" title="the same text was posted in other rooms">${S.open.copies.has(e.ei)?'▾':'▸'} also posted in ${r.copies.map(c=>`#${esc(c.room)} ${esc(c.t.slice(0,5))}`).join(', ')}</button>` : '';
+  const copyNote = r.copyOf!=null ? `<span class="faint" style="font-size:11px">copy of an earlier post</span>` : '';
+  const thOpen=S.open.think.has(e.ei); const full=S.ev.get(e.ei);
+  const tk = e.th==='summary' ? 'reasoning summary (OpenAI)' : e.th==='reasoning' ? 'logged reasoning' : 'logged thinking';
+  const think = e.th ? `<button class="linkish" data-think="${esc(e.ei)}">${thOpen?'▾':'▸'} its ${tk}${full&&full.thinking?` · ${fmt(full.thinking.length)} chars`:''}</button>${thOpen?(full?`<div class="thinkbox"><div class="tt">${markTerms(esc(full.thinking||'(none)'), S.search&&S.search.thinking?terms:null)}</div></div>`:'<div class="spin" style="margin-left:44px">loading…</div>'):''}` : '';
+  return `<div class="mh"><span class="tm">${esc(e.t.slice(0,5))}</span><span class="who" title="${esc(e.sp)}">${esc(e.sp)}</span>${e.hc==='operator'?'<span class="tag">operator</span>':e.h?'<span class="tag">viewer</span>':''}${room}${copyNote}<span class="gly">${gly}</span>
+      <span class="acts2">${canAsk?`<button class="askbtn" data-ask="${esc(e.ei)}" title="Ask ${esc(e.sp)} about this message (a)">Ask ▸</button>`:`<button class="askbtn" data-askother="${esc(e.ei)}" title="Ask an agent about this message">Ask an agent ▾</button>`}<button class="ghost dots" data-dots="${esc(e.ei)}" title="More: ask someone else, focus, star, link…">⋯</button></span></div>
+    <div class="mtext${long&&!more?' clamp':''}">${fmtContent(txt, terms)}</div>
+    ${long?`<button class="linkish" data-showmore="${esc(e.ei)}">${more?'show less':`show more (${fmt(txt.length)} chars)`}</button>`:''}${xp}${think}`;
+}
+function msgMenu(ei, el){
+  const f=findEv(ei); if(!f) return; const e=f.e; const isAgent=!e.h;
+  const m=openMenu(el, `${isAgent?`<div class="mi" data-m="askother">Ask someone else about this…</div><div class="mi" data-m="focus">${S.focus.includes(e.slug)?'Unfocus':'Focus'} ${esc(e.sp)}</div>`:''}
+    <div class="mi" data-m="star">${e.star?'Unstar':'☆ Star this message'}</div><div class="mi" data-m="copy">Copy link</div>
+    ${e.p==='cc'?'<div class="mi" data-m="cc" style="color:var(--near)">Open its Claude Code session ▸</div>':''}<div class="mh">ei ${esc(e.ei)} · ${esc(e.t)} UTC${e.room?' · #'+esc(e.room):''}</div>`);
+  m.addEventListener('click', async ev=>{ const it=ev.target.closest('[data-m]'); if(!it) return; const a=it.dataset.m; closeMenu();
+    if(a==='askother') askOtherMenu(ei, el);
+    if(a==='focus') toggleFocus(e.slug);
+    if(a==='star') toggleStar(ei);
+    if(a==='copy'){ const u=location.origin+location.pathname+`#/day/${f.D.day}?m=${ei}`; navigator.clipboard&&navigator.clipboard.writeText(u).then(()=>toast('Link copied'),()=>toast(esc(u))); }
+    if(a==='cc'){ const full=await getEvent(ei); if(full.probe&&full.probe.tier==='cc') openCCBranch(full.probe.seg_id, ei, full.day); } });
+}
+/* The detail panel of an activity event (chat messages show their full text in the row itself). */
+function detailHTML(e){
+  const full=S.ev.get(e.ei);
+  if(!full){ getEvent(e.ei).then(()=>{ const el=document.querySelector(`[data-detail="${e.ei}"]`); if(el) el.innerHTML=detailHTML(e); }).catch(err=>toast(esc(err.message))); return '<div class="spin">loading…</div>'; }
+  const terms=S.search?S.search.terms:null;
+  const body=`<div><b>${esc(full.type)}</b> — ${esc(full.s)}</div><div class="kv">${Object.entries(full.detail||{}).map(([k,v])=>`<span class="k">${esc(k)}</span><span class="v">${esc(String(v).slice(0,3000))}</span>`).join('')}</div>`;
+  const tk = full.think_kind==='verbatim'?"The agent's logged thinking (verbatim)": full.think_kind==='summary'?'Logged reasoning summary (OpenAI) — not raw reasoning': full.think_kind==='reasoning'?'Its logged reasoning':'Logged thinking';
+  const think = full.thinking ? `<details class="thinkbox"><summary>${tk} · ${fmt(full.thinking.length)} chars</summary><div class="tt">${markTerms(esc(full.thinking), S.search&&S.search.thinking?terms:null)}</div></details>` : `<div class="thinkbox faint" style="font-size:12px">No thinking logged here</div>`;
+  const meta=`<div class="dm">${full.room?'#'+esc(full.room)+' · ':''}${esc((full.created_at||'').slice(11,19))} UTC · ei ${esc(full.ei)}${full.n_probes?` · asked ${esc(full.n_probes)}×`:''}${full.k==='a'?' · activity is context only (not askable)':''}</div>`;
+  return body+think+meta;
+}
+function aboutHTML(day){
+  const D=S.days.get(day); if(!D) return ''; const x=S.dayIdx.get(day); const era=S.eras[x._era];
+  let ann=''; if(era && era.announce_ei!=null){ const a=D.events.find(e=>e.ei===era.announce_ei); if(a) ann=`<div class="quote" data-jump="${esc(a.ei)}" title="click to jump to it">${esc(a.sp)}: ${esc(a.c)}</div>`; }
+  const by=new Map(); D.events.forEach(e=>{ if(e.h||!e.slug) return; const r=by.get(e.slug)||{slug:e.slug, sp:e.sp, fg:e.fg, n:0}; if(e.k==='c') r.n++; by.set(e.slug,r); });
+  const who=['anthropic','openai','google','other'].map(f=>{ const l=[...by.values()].filter(r=>r.fg===f&&r.n).sort((a,b)=>b.n-a.n); return l.length?`<div>${l.map(r=>`<span class="agchip${S.focus.includes(r.slug)?' on':''}" data-focus="${esc(r.slug)}" title="click to focus ${esc(r.sp)}">${dot(r.fg)}${esc(r.sp)} <span class="n">${esc(r.n)}</span></span>`).join('')}</div>`:''; }).join('');
+  const hum=D.events.filter(e=>e.k==='c'&&e.h&&e.hc!=='automated');
+  const ta=(D.talked_about||[]).slice(0,6);
+  return `<div class="aboutbox">
+    <h4>Goal</h4><div><b>${esc(era?era.label:'—')}</b> ${era&&era.approx?'<span class="tag">auto</span>':''} <span class="faint">· d${esc(era?era.start_day:'')}–${esc(era?era.end_day:'')}</span></div>${ann}
+    <h4>Who's around · ${by.size} <span class="faint" style="text-transform:none;letter-spacing:0;font-weight:400">(click to focus)</span></h4>${who}
+    ${ta.length?`<h4>Talked about <span title="approximate — distinctive-name matches in other agents' messages">≈</span></h4>${ta.map(t=>`<span class="agchip" data-about="${esc(t.slug)}" title="search mentions of ${esc(t.name)} today">${dot(t.family_group)}${esc(t.name)} <span class="n">${esc(t.n)}</span></span>`).join('')}`:''}
+    ${hum.length?`<h4>Humans · ${hum.length}</h4>${hum.slice(0,12).map(e=>`<div class="li" data-jump="${esc(e.ei)}"><span class="tm">${esc(e.t.slice(0,5))}</span><span class="tx"><b>${esc(e.sp)}</b> — ${esc(e.c.slice(0,140))}</span></div>`).join('')}`:''}
+    ${D.cc_segments&&D.cc_segments.length?`<h4>Claude Code windows · ${D.cc_segments.length}</h4>${D.cc_segments.map(s=>`<div class="li" data-ccabout="${esc(s.seg_id)}" title="${esc(ccBoundaryText(s.boundary))}"><span class="tm">${esc((s.start||'').slice(11,16))}</span><span class="tx">#${esc(s.seg_id)} · ${esc(s.boundary==='init'?'resumed':s.boundary)} · ${esc(s.n_turns)} turns — ${esc((s.preview||'').slice(0,90))}</span></div>`).join('')}`:''}
+    <div class="faint" style="margin-top:8px;font-size:11.5px">${fmt(x.n_msgs)} messages · ${fmt(x.n_act)} activity events · ${fmt(x.n_think)} with logged thinking</div></div>`;
+}
+function turnBody(t){
+  const clip=(s,n=20)=>{ const l=String(s).split('\n'); return l.length>n?{t:l.slice(0,n).join('\n'),more:l.length-n}:{t:String(s),more:0}; };
+  let b=''; if(t.thinking) b+=`<div class="blk"><div class="lb">logged thinking (shown for reading; not replayed into the question's context)</div><div class="think">${esc(t.thinking)}</div></div>`;
+  if(t.text) b+=`<div class="blk"><div class="lb">text</div><pre>${esc(t.text)}</pre></div>`;
+  t.actions.forEach(a=>{ const c=clip(JSON.stringify(a.input,null,2)); b+=`<div class="blk"><div class="lb">tool call · ${esc(a.name)}</div><pre>${esc(c.t)}${c.more?`\n… ${c.more} more lines`:''}</pre></div>`; });
+  t.observations.forEach((o,k)=>{ const c=clip(o); b+=`<div class="blk"><div class="lb">result ${k+1}</div><pre>${esc(c.t)}</pre>${c.more?`<button class="ghost" data-obsall="${esc(t.turn)}.${k}">show ${c.more} more lines</button>`:''}</div>`; });
+  return b||'<span class="faint">(empty turn)</span>';
+}
+/* keep the row at the top of the viewport stable across re-renders */
+function topAnchor(){ const pane=$('#tlpane'); const top=pane.getBoundingClientRect().top; for(const el of $$('#tl .r')){ const r=el.getBoundingClientRect(); if(r.bottom>top+2) return {key:el.dataset.key, off:r.top-top}; } return null; }
+function restoreAnchor(a){ if(!a) return; const el=document.querySelector(`#tl .r[data-key="${CSS.escape(a.key)}"]`); if(!el) return; const pane=$('#tlpane'); pane.scrollTop += (el.getBoundingClientRect().top - pane.getBoundingClientRect().top) - a.off; }
+function scrollToKey(key, pulse, frac=0.25){ const el=document.querySelector(`#tl .r[data-key="${CSS.escape(key)}"]`); if(!el) return; const pane=$('#tlpane');
+  const lh = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--lh-h'))||0;   // sticky lane header
+  const hdr = key.startsWith('m') ? 40 : 0;     // + room for the pinned day header above a message
+  const y=el.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop - (frac ? pane.clientHeight*frac : 0) - lh - hdr; pane.scrollTop=Math.max(0,y);
+  if(pulse) el.querySelector('.b').animate([{background:'var(--accent-soft)'},{background:'transparent'}],{duration:1300}); }
+/* ------------------------------------------ interaction ------------------------------------------ */
+function wireTimeline(){
+  $('#tl').addEventListener('click', async ev=>{
+    const t=ev.target;
+    const btn=t.closest('button,[data-moment],[data-focus],[data-jump],[data-about],[data-ccabout],[data-chatlink],summary');
+    if(btn){
+      const d=btn.dataset;
+      if(btn.tagName==='SUMMARY') return;
+      if(d.moment!=null){ openMoment(S.ov.moments[+d.moment]); return; }
+      if(d.dismiss!=null){ S.startDismissed=true; ls('startDismissed','1'); render(); return; }
+      if(d.ask){ askSelf(+d.ask); return; }
+      if(d.askother){ askOtherMenu(+d.askother, btn); return; }
+      if(d.focus){ toggleFocus(d.focus, ev.shiftKey); return; }
+      if(d.ccabout){ const day=+btn.closest('.r').dataset.key.slice(1); openCCBranch(+d.ccabout, 'about', day); return; }
+      if(d.ccnav){ const C=[...S.cc.values()][0]; if(C) openCCBranch(+d.ccnav, C.anchor, C.day); return; }
+      if(d.ccclose){ S.cc.delete(d.ccclose); render(); replaceHash(); return; }
+      if(d.chatlink){ ev.preventDefault(); const ei=+d.chatlink; const f=findEv(ei); goto(f?f.D.day:S._curDay, ei); return; }
+      if(d.jump){ const ei=+d.jump; S.sel='m'+ei; render({scrollTo:{key:'m'+ei, pulse:true}}); replaceHash(); return; }
+      if(d.about){ const q=`about:${d.about} day:${S._curDay}`; $('#q').value=q; runSearch(q); return; }
+      if(d.showmore){ const ei=+d.showmore; if(S.open.more.has(ei)) S.open.more.delete(ei); else S.open.more.add(ei); patchRow('m'+ei); return; }
+      if(d.copies){ const ei=+d.copies; if(S.open.copies.has(ei)) S.open.copies.delete(ei); else S.open.copies.add(ei); render({pin:'m'+ei}); return; }
+      if(d.think){ const ei=+d.think; if(S.open.think.has(ei)) S.open.think.delete(ei); else { S.open.think.add(ei); if(!S.ev.has(ei)) getEvent(ei).then(()=>patchRow('m'+ei)).catch(err=>toast(esc(err.message))); } patchRow('m'+ei); return; }
+      if(d.dots){ msgMenu(+d.dots, btn); return; }
+      if(d.daynav){ openDay(+d.daynav); return; }
+      if(d.dayclose){ closeDay(+d.dayclose); return; }
+      if(d.retryday){ const day=+d.retryday; S.failed.delete(day); render({pin:'d'+day}); return; }   // buildRows re-requests it
+      if(d.obsall){ const [tn,k]=d.obsall.split('.').map(Number); const C=[...S.cc.values()][0]; const tt=C&&C.W&&C.W.turns.find(x=>x.turn===tn); const pre=btn.previousElementSibling; if(tt&&pre){ pre.textContent=tt.observations[k]; btn.remove(); } return; }
+      if(btn.tagName==='BUTTON') return;
+    }
+    if(t.closest('.detail,.aboutbox')) return;
+    const rowEl=t.closest('.r'); if(!rowEl) return;
+    if(window.getSelection && String(window.getSelection()).length>0) return;
+    activateRow(rowEl.dataset.key);
+  });
+}
+function activateRow(key){
+  const r=_rows.find(x=>x.key===key); if(!r) return;
+  setSel(key);
+  const pin={pin:key};
+  if(r.t==='goal'){ const d=r.era.days[0]; if(d!=null) openDay(d, key); return; }
+  if(r.t==='day'){ if(S.open.days.has(r.day)) closeDay(r.day, key); else openDay(r.day, key); return; }
+  if(r.t==='about'){ if(S.open.about.has(r.day)) S.open.about.delete(r.day); else S.open.about.add(r.day); patchRow(key); return; }
+  if(r.t==='msg'){ if(r.ev.k==='a'){ const ei=r.ev.ei; if(S.open.msgs.has(ei)) S.open.msgs.delete(ei); else S.open.msgs.add(ei); patchRow(key); } const f=findEv(r.ev.ei); if(f){ S._curDay=f.D.day; S._lastHashDay=f.D.day; } replaceHash(); return; }
+  if(r.t==='util'){ if(r.act==='unhide'){ S.open.hidden.add(r.arg); render(pin); } else if(r.act==='run'){ if(S.open.runs.has(r.arg)) S.open.runs.delete(r.arg); else S.open.runs.add(r.arg); render(pin); } else if(r.act==='ccclose'){ S.cc.delete(r.arg); render(); replaceHash(); } return; }
+  if(r.t==='turn'){ if(r.cc.open.has(r.i)) r.cc.open.delete(r.i); else r.cc.open.add(r.i); patchRow(key); return; }
+  if(r.t==='gap'){ openAsk({target:'cc', seg_id:r.cc.seg_id, seq:r.seq}); render(); return; }
+}
+/* Open a day (closing any other) and bring its header to the top; close keeps the day row where it is. */
+function openDay(d, fromKey){
+  S.open.days=new Set([d]); S.failed.delete(d); S._curDay=d; S._lastHashDay=d; setSel('d'+d);
+  render(fromKey ? {pin:fromKey} : {scrollTo:{key:'d'+d, frac:0}});        // clicked: stay put · ‹ › / keys: bring it to the top
+  ensureDay(d).then(()=>{ render({pin:'d'+d}); });
+  replaceHash();
+}
+function closeDay(d, fromKey){ S.open.days.delete(d); if(S._curDay===d){ S._curDay=null; S._lastHashDay=null; } setSel('d'+d); render({pin:'d'+d}); replaceHash(); }
+function openMoment(m){ if(!m) return; goto(m.day_from, m.ei!=null?m.ei:null); }
+function toggleFocus(slug, add){ const i=S.focus.indexOf(slug); if(i>=0) S.focus.splice(i,1); else { if(!add) S.focus=[]; S.focus.push(slug); if(S.focus.length>3) S.focus.shift(); }
+  if(!S.focus.length) S.only=false; renderFocusChips(); render(); replaceHash(); }
+function renderFocusChips(){ const host=$('#focuschips'); if(!S.focus.length){ host.innerHTML=''; return; }
+  host.innerHTML = S.focus.map(s=>{ const a=S.agents[s]||{family_group:'other'}; return `<span class="fpill">${dot(a.family_group)}${esc(agentName(s))}<button data-unfocus="${esc(s)}" title="remove focus">✕</button></span>`; }).join('') +
+    `<label class="fpill" style="border-color:var(--line-2);padding-right:9px" title="hide other agents' messages"><input type="checkbox" id="onlyfocus" ${S.only?'checked':''}> only these</label>`; }
+
+/* ------------------------------------------ Claude Code side branch ------------------------------------------ */
+async function openCCBranch(seg_id, anchor, day, opts={}){
+  S.cc.clear();                                        // one open window at a time keeps the graph readable
+  const key = anchor==='about' ? 'about:'+day : 'm:'+anchor;
+  const C={key, seg_id, anchor, day, W:null, open:new Set()}; S.cc.set(key, C);
+  if(anchor==='about') S.open.about.add(day);
+  if(!opts.silent) render();
+  try{ C.W=await api('/api/cc/window?seg_id='+seg_id); }catch(e){ toast("Couldn't load the Claude Code window: "+esc(e.message)); S.cc.delete(key); }
+  if(anchor!=='about' && C.W){ const e=S.ev.get(anchor); const pt=e&&e.probe&&e.probe.turn; if(pt!=null) C.open.add(pt); }
+  if(!opts.silent){ render({scrollTo:{key:'ch'+seg_id, pulse:true}}); replaceHash(); }
+}
+
+/* ------------------------------------------ search (filters the timeline in place) ------------------------------------------ */
+async function runSearch(q, opts={}){
+  q=(q||'').trim(); if(!q){ clearSearch(); return; }
+  let r; try{ r=await api('/api/search?q='+encodeURIComponent(q)+'&limit=500'); }catch(e){ toast('Search: '+esc(e.message)); return; }
+  if(r.jump){ $('#q').value=''; S.q=''; S.search=null; S.dayHits.clear(); goto(r.jump.day, r.jump.ei); return; }
+  S.q=q; S.search=r; S.dayHits.clear(); $('#qclear').style.display='block';
+  const pd=r.per_day; const days=Object.keys(pd).map(Number);
+  if(days.length && !opts.fromHash){ const top=days.reduce((a,b)=>pd[b]>pd[a]?b:a, days[0]); S.open.days=new Set([top]); S._curDay=top; S._lastHashDay=top; await ensureDay(top); await loadDayHits(top); }
+  [...S.open.days].forEach(d=>{ if(!S.dayHits.has(d)) loadDayHits(d); });
+  render(!opts.fromHash && S._curDay!=null ? {scrollTo:{key:'d'+S._curDay, frac:0}} : {});
+  if(!opts.fromHash){ replaceHash();
+    toast(`${fmt(r.total)} hit${r.total===1?'':'s'} across ${days.length} day${days.length===1?'':'s'} · press <b>n</b> / <b>N</b> to step through them`, 4000); }
+}
+async function loadDayHits(day){ if(!S.q) return; try{ const r=await api(`/api/search?q=${encodeURIComponent(S.q)}&days=${day}-${day}&limit=5000`); S.dayHits.set(day, new Set(r.hits.map(h=>h.ei))); render(); }catch(e){} }
+function clearSearch(silent){ S.q=''; S.search=null; S.dayHits.clear(); $('#q').value=''; $('#qclear').style.display='none'; render(); if(!silent) replaceHash(); }
+async function stepHit(dir){
+  if(!S.search) return; const pd=S.search.per_day; const days=Object.keys(pd).map(Number).sort((a,b)=>a-b); if(!days.length) return;
+  let curEi = S.sel&&S.sel.startsWith('m') ? +S.sel.slice(1) : null; let day = S._curDay!=null&&pd[S._curDay] ? S._curDay : (dir>0?days[0]:days[days.length-1]);
+  for(let guard=0; guard<days.length+2; guard++){
+    await ensureDay(day); if(!S.dayHits.has(day)) await loadDayHits(day);
+    const D=S.days.get(day); const xp=D?crossPosts(D):null;          // skip folded cross-post copies (same text as a shown hit)
+    const hs=[...(S.dayHits.get(day)||[])].filter(x=>!xp || !xp.copyOf.has(x) || S.open.copies.has(xp.copyOf.get(x))).sort((a,b)=>a-b);
+    const nxt = dir>0 ? hs.find(x=>curEi==null||x>curEi) : hs.filter(x=>curEi==null||x<curEi).pop();
+    if(nxt!=null){ goto(day, nxt); return; }
+    const nd = dir>0 ? days.find(d=>d>day) : days.filter(d=>d<day).pop(); if(nd==null){ toast('No more hits'); return; }
+    day=nd; curEi=null;
+  }
+}
+
+/* ------------------------------------------ overview strip (View option) ------------------------------------------ */
+function drawStrip(){
+  if(!S.view.strip || !S.ov) return;
+  const svg=$('#strip'), w=$('#stripwrap').clientWidth; if(!w) return; const [d0,d1]=S.ov.day_range; const per=(w-12)/(d1-d0+1); const x=d=>6+(d-d0)*per;
+  const maxA=Math.max(1,...S.ov.days.map(d=>d.n_agent)); const hits=S.search?S.search.per_day:null; const maxH=hits?Math.max(1,...Object.values(hits)):1;
+  let h=''; S.eras.forEach((e,i)=>{ h+=`<rect x="${x(e.start_day)}" y="2" width="${Math.max(1,x(e.end_day+1)-x(e.start_day)-1)}" height="6" rx="1.5" fill="${i%2?'var(--line-2)':'var(--line)'}"><title>${esc(e.label)}</title></rect>`; });
+  S.ov.days.forEach(d=>{ const tot=44*Math.sqrt(d.n_agent/maxA); let y=56; const sum=FG.reduce((s,f)=>s+(d.fg[f]||0),0)||1;
+    FG.forEach(f=>{ const v=d.fg[f]||0; if(!v) return; const hh=tot*v/sum; y-=hh; h+=`<rect x="${x(d.day)}" y="${y}" width="${Math.max(1,per-.3)}" height="${hh}" fill="var(--f-${f})"${hits?' opacity=".22"':''}/>`; });
+    if(hits&&hits[d.day]){ const hh=Math.max(2,44*Math.sqrt(hits[d.day]/maxH)); h+=`<rect x="${x(d.day)}" y="${56-hh}" width="${Math.max(1.5,per)}" height="${hh}" fill="var(--accent)"/>`; } });
+  if(S._curDay!=null) h+=`<line x1="${x(S._curDay)}" x2="${x(S._curDay)}" y1="0" y2="60" stroke="var(--accent)" stroke-width="2"/>`;
+  svg.setAttribute('viewBox',`0 0 ${w} 64`); svg.innerHTML=h;
+}
+function wireStrip(){
+  const svg=$('#strip'), tip=$('#tip');
+  const dayAt=ev=>{ const r=svg.getBoundingClientRect(); const [d0,d1]=S.ov.day_range; const per=(r.width-12)/(d1-d0+1); return clamp(Math.floor((ev.clientX-r.left-6)/per)+d0,d0,d1); };
+  svg.addEventListener('mousemove', ev=>{ if(!S.ov) return; const d=dayAt(ev), x=S.dayIdx.get(d); const e=x?S.eras[x._era]:null;
+    tip.innerHTML = x ? `<b>Day ${d}</b> · ${esc(shortDate(x.date))}<br>${esc(e?e.label:'')}<br><span class="faint">${fmt(x.n_msgs)} msgs · ${esc(x.n_agents)} agents${S.search&&S.search.per_day[d]?` · <b style="color:var(--accent)">${esc(S.search.per_day[d])} hits</b>`:''}</span>` : `Day ${d} · no activity`;
+    tip.style.display='block'; tip.style.left=clamp(ev.clientX+12,4,innerWidth-tip.offsetWidth-6)+'px'; tip.style.top=(svg.getBoundingClientRect().bottom+6)+'px'; });
+  svg.addEventListener('mouseleave', ()=>{ tip.style.display='none'; });
+  svg.addEventListener('click', ev=>{ if(!S.ov) return; let d=dayAt(ev); if(!S.dayIdx.has(d)) d=S.activeDays.reduce((b,x)=>Math.abs(x-d)<Math.abs(b-d)?x:b, S.activeDays[0]); goto(d); });
+}
+
+/* ------------------------------------------ Ask pane ------------------------------------------ */
+function askSelf(ei){
+  const f=findEv(ei); if(!f || f.e.h) return;
+  if(document.querySelector(`#tl .r[data-key="m${ei}"]`)) setSel('m'+ei);
+  getEvent(ei).then(full=>{
+    if(full.probe && full.probe.tier==='cc') openAsk({target:'cc', at_ei:ei, anchor:'after'});   // server maps it to the turn that posted it
+    else openAsk({target:'tierb', agent:f.e.slug, ei, anchor:'after'});
+  });
+}
+function suggestAgents(ei){
+  const f=findEv(ei); if(!f) return []; const e=f.e, D=f.D; const t0=tsec(e.t); const by=new Map();
+  D.events.forEach(x=>{ if(x.k!=='c'||x.h||!x.slug||x.room!==e.room) return; const dt=Math.abs(tsec(x.t)-t0); if(dt>3600) return; const r=by.get(x.slug); if(!r||dt<r.dt) by.set(x.slug,{slug:x.slug, sp:x.sp, fg:x.fg, dt}); });
+  const list=[...by.values()].sort((a,b)=>a.dt-b.dt);
+  const cc=S.ov.agents.find(a=>a.tier==='cc'); if(cc && D.cc_segments && D.cc_segments.length && !by.has(cc.slug)) list.push({slug:cc.slug, sp:cc.name, fg:cc.family_group, dt:null, cc:true});
+  return list;
+}
+function askOtherMenu(ei, el){
+  const f=findEv(ei); if(!f) return; const e=f.e;
+  const sug=suggestAgents(ei).filter(a=>a.slug!==e.slug);
+  const all=new Map(); f.D.events.forEach(x=>{ if(x.slug&&!x.h&&!all.has(x.slug)) all.set(x.slug,{slug:x.slug, sp:x.sp, fg:x.fg}); });
+  const m=openMenu(el, `<div class="mh">Ask right after this message</div>${sug.map(a=>`<div class="mi" data-pick="${esc(a.slug)}">${dot(a.fg)}${esc(a.sp)}<span class="r2">${a.cc?'CC · near-faithful':a.dt!=null?(a.dt<60?'here <1 min':Math.round(a.dt/60)+' min away'):''}</span></div>`).join('')||'<div class="mi faint">nobody else posted in this room within an hour</div>'}
+    <div class="mh">Anyone active that day</div><input type="text" placeholder="type to filter…" data-filter><div data-all>${[...all.values()].filter(a=>a.slug!==e.slug).map(a=>`<div class="mi" data-pick="${esc(a.slug)}" data-name="${esc(a.sp.toLowerCase())}">${dot(a.fg)}${esc(a.sp)}</div>`).join('')}</div>`);
+  m.querySelector('[data-filter]').addEventListener('input', ev=>{ const v=ev.target.value.toLowerCase(); m.querySelectorAll('[data-all] .mi').forEach(x=>x.style.display=x.dataset.name.includes(v)?'':'none'); });
+  m.addEventListener('click', ev=>{ const p=ev.target.closest('[data-pick]'); if(!p) return; closeMenu(); pickAsk(ei, p.dataset.pick); });
+}
+function pickAsk(ei, slug){ const a=S.agents[slug]; const f=findEv(ei); if(document.querySelector(`#tl .r[data-key="m${ei}"]`)) setSel('m'+ei);
+  if(a && a.tier==='cc' && f && f.D.cc_segments && f.D.cc_segments.length) openAsk({target:'cc', at_ei:ei, anchor:'after'});
+  else openAsk({target:'tierb', agent:slug, ei, anchor:'after'}); }
+let _menu=null;
+function openMenu(el, html){ closeMenu(); const m=document.createElement('div'); m.className='menu'; m.innerHTML=html; document.body.appendChild(m);
+  const r=el.getBoundingClientRect(); m.style.left=clamp(r.left,6,innerWidth-m.offsetWidth-6)+'px'; const below=r.bottom+6+m.offsetHeight<innerHeight; m.style.top=(below?r.bottom+4:Math.max(6,r.top-m.offsetHeight-4))+'px';
+  _menu=m; setTimeout(()=>document.addEventListener('mousedown',_away),0); const inp=m.querySelector('input[type=text]'); if(inp) inp.focus(); return m; }
+function _away(ev){ if(_menu && !_menu.contains(ev.target)) closeMenu(); }
+function closeMenu(){ if(_menu){ _menu.remove(); _menu=null; document.removeEventListener('mousedown',_away); } }
+
+function openAsk(spec, opts={}){
+  const prev=S.ask; const same=prev && encodeAsk(prev.spec)===encodeAsk(spec);
+  S.ask={spec:Object.assign({window:80, mode:'belief'}, prev?{window:prev.spec.window, model:prev.spec.model, format:prev.spec.format}:{}, spec), prompt:null, cards:same?prev.cards:[], question:same?prev.question:'', fidOpen:null, optsOpen:false};   // fidOpen null = default (open when APPROXIMATE)
+  const a = selAnchor() || topAnchor();
+  document.body.classList.add('ask-open'); restoreAnchor(a);
+  renderAsk(); fetchPrompt();
+  if(!opts.fromHash) pushHash();
+  setTimeout(()=>{ const ta=$('#askq'); if(ta && !opts.fromHash) ta.focus(); }, 60);
+}
+function closeAsk(silent){ const had=!!S.ask; const a=selAnchor()||topAnchor(); S.ask=null; S.ctx=null; document.body.classList.remove('ask-open'); restoreAnchor(a); $('#opts').classList.remove('on'); if(had){ render(); if(!silent) pushHash(); } }
+let _pt=null;
+function fetchPrompt(delay=0){ clearTimeout(_pt); const A=S.ask; if(!A) return;
+  _pt=setTimeout(async ()=>{ const qs=new URLSearchParams(specParams(A.spec, A.question)); const key=qs.toString(); A._pkey=key;
+    try{ const p=await api('/api/probe/prompt?'+qs); if(S.ask!==A||A._pkey!==key) return; A.prompt=p; A.err=null; }
+    catch(e){ if(S.ask!==A) return; A.prompt=null; A.err=e.message; }
+    applyCtx(); renderAsk(); }, delay); }
+function specParams(s, question){ const o={mode:s.mode||'belief'}; if(question) o.question=question;
+  if(s.target==='cc'){ o.target='cc'; if(s.at_ei!=null){ o.at_ei=s.at_ei; if(s.anchor) o.anchor=s.anchor; } else { o.seg_id=s.seg_id; o.seq=s.seq; } }
+  else { o.target='tierb'; o.agent=s.agent; o.ei=s.ei; o.anchor=s.anchor||'after'; o.window=s.window||80; if(s.format==='transcript') o.format='transcript'; }
+  return o; }
+function anchorEv(){ const s=S.ask&&S.ask.spec; if(!s) return null; const ei = s.target==='tierb'?s.ei : s.at_ei; const f=ei!=null?findEv(ei):null; return f?f.e:null; }
+function applyCtx(){ const A=S.ask; const c=A&&A.prompt&&A.prompt.context; const ae=anchorEv();
+  S.ctx = (c && c.room && c.first_ei!=null) ? {room:c.room, first_ei:c.first_ei, last_ei:c.last_ei, anchor:ae?ae.ei:null} : (ae?{anchor:ae.ei}:null); render(); }
+function inContext(e){ const c=S.ctx; return !!(c && c.room && e && e.k==='c' && e.room===c.room && e.ei>=c.first_ei && e.ei<=c.last_ei); }
+function renderAsk(){
+  const A=S.ask; if(!A) return;
+  const keep=keepFocus();
+  const s=A.spec, p=A.prompt, ae=anchorEv();
+  const rslug = p&&p.resolved ? p.resolved.agent : (s.target==='tierb'? s.agent : (S.ov.agents.find(a=>a.tier==='cc')||{}).slug);
+  const ag = S.agents[rslug] || {name:rslug||'agent', family_group:'other'};
+  let opts=[]; if(ae){ const sug=suggestAgents(ae.ei); if(!ae.h && !sug.some(x=>x.slug===ae.slug)) sug.unshift({slug:ae.slug, sp:ae.sp}); opts=sug; }
+  if(!opts.some(o=>o.slug===rslug)) opts.unshift({slug:rslug, sp:ag.name});
+  const aeDay = ae && findEv(ae.ei) ? findEv(ae.ei).D.day : '';
+  const after = (s.target==='tierb' || s.at_ei!=null) && s.anchor!=='before';
+  const own = ae && ae.slug===rslug;
+  const where = ae ? `at Day ${esc(aeDay)} · ${esc(ae.t.slice(0,5))} UTC · #${esc(ae.room||'')} · ${after ? (own ? 'just after it wrote this' : `just after ${esc(ae.sp)}'s message`) : 'just before it wrote this'}` : (s.target==='cc'?`inside Claude Code window #${esc(s.seg_id)}`:'');
+  const f=p&&p.fidelity; const near=f&&f.level==='near_faithful'; const c=p&&p.context;
+  const fidOpen = A.fidOpen ?? !near;          // an APPROXIMATE reconstruction shows what's missing up front
+  const ctxLine = !p ? '' : (p.resolved&&p.resolved.target==='cc') ? `replays its real Claude Code window #${esc(p.resolved.seg_id)} through turn #${esc(p.resolved.turns_done??p.resolved.turn??'?')}` : `rebuilt from ${fmt(c.n)} #${esc(c.room||'')} messages${c.n_earlier_days?` · reaches back ${esc(c.n_earlier_days)} day${c.n_earlier_days>1?'s':''}`:''}`;
+  $('#ahead').innerHTML = `<div class="row1">${dot(ag.family_group)}<select id="askagent" title="Ask a different agent at this moment">${opts.map(o=>`<option value="${esc(o.slug)}"${o.slug===rslug?' selected':''}>${esc(o.sp||agentName(o.slug))}</option>`).join('')}</select><button class="ghost x" id="askclose" title="Close (Esc)">✕</button></div>
+    <div class="where">${where}</div>
+    ${p?`<div class="fidchip ${near?'near':'approx'}" id="fidchip" title="What the model is given — click for details">${f&&f.counterfactual?'<span class="cf">COUNTERFACTUAL</span>':''}<span class="bd">${near?'NEAR-FAITHFUL':'APPROXIMATE'}</span>${ctxLine}<span class="more">${fidOpen?'▾':'▸'}</span>
+      ${fidOpen?`<div class="fiddetail">${esc(f.summary||'')}${f.missing&&f.missing.length?`<ul>${f.missing.map(m=>`<li>missing: ${esc(m)}</li>`).join('')}</ul>`:''}${(f.warnings||[]).map(w=>`<div class="w ${esc(w.severity||'info')}"><span>${w.severity==='counterfactual'?'⛔':w.severity==='warn'?'⚠':'<b class="ii">i</b>'}</span><span>${esc(w.text)}</span></div>`).join('')}${c&&c.room?`<div class="faint" style="margin-top:5px">Context: ${esc(span(c.t0,c.t1))} · ${(c.speakers||[]).length} speakers · ~${fmt(c.approx_tokens)} tokens. These messages are marked with an accent line in the timeline.</div>`:''}</div>`:''}</div>`
+      : A.err?`<div class="fidchip approx">Couldn't build the question's context: ${esc(A.err)}</div>`:`<div class="fidchip"><span class="spin"><span class="pulse"></span>rebuilding what it could see…</span></div>`}`;
+  const th=$('#athread');
+  th.innerHTML = (ae?`<div class="quote" id="askquote" title="click to expand"><b>${esc(ae.sp)}</b>: ${esc(ae.c||ae.s||'')}</div>`:'') +
+    (A.cards.length ? A.cards.map(cardHTML).join('') : `<div class="empty-ask">Ask ${esc(ag.name)} about this moment. A live model is given ${p&&p.resolved&&p.resolved.target==='cc'?'its real Claude Code turns from this window':'the room messages it could see'} and answers in character — a reconstruction, not a record.</div>`);
+  const mode=s.mode||'belief'; const resOk=p?p.resample_ok!==false:true;
+  const aeFull=ae?S.ev.get(ae.ei):null; const mention=aeFull&&(aeFull.mentions||[]).map(agentName).find(n=>n&&n!==ag.name);
+  const X = mention || (ae&&!ae.h&&ae.sp!==ag.name?ae.sp:null);
+  const sugg=['What are you thinking right now?','What will you do next, and why?', X?`How do you see ${X}'s situation?`:'Is anyone here struggling? What, if anything, should you do?'];
+  $('#composer').innerHTML = `${!A.cards.length&&mode==='belief'?`<div class="sugg">${sugg.map(q=>`<span class="chip" data-sugg="${esc(q)}">${esc(q)}</span>`).join('')}</div>`:''}
+    ${mode==='belief'?`<textarea id="askq" rows="2" placeholder="${esc(p?p.default_question:'What are you thinking right now?')}">${esc(A.question||'')}</textarea>`:`<div class="muted" style="font-size:12.5px">Resample: the model takes ${esc(ag.name)}'s next turn afresh from the same context, then it's shown next to what it actually did.</div>`}
+    <div class="row2"><div class="seg"><button data-mode="belief" class="${mode==='belief'?'on':''}" title="Ask it a question (outside the village: nothing it writes is shown to the other agents)">Ask</button><button data-mode="resample" class="${mode==='resample'?'on':''}" ${resOk?'':'disabled title="Only where its context ends on a tool result"'} title="Let it take its next turn again">Resample</button></div>
+      <button class="ghost" id="optsbtn" title="Model, context window, moment, exact prompt">⚙ Options</button>
+      <button class="primary send" id="asksend" ${p?'':'disabled'} title="⌘/Ctrl+Enter">${mode==='resample'?'Resample':'Send'}</button></div>`;
+  renderOpts(); restoreFocus(keep);
+}
+function renderOpts(){
+  const A=S.ask, o=$('#opts'); if(!A){ o.classList.remove('on'); return; }
+  o.classList.toggle('on', !!A.optsOpen); if(!A.optsOpen){ o.innerHTML=''; return; }
+  const s=A.spec, ae=anchorEv(); const models=(S.models&&S.models.models)||[{id:'claude-opus-4-8',usable:true}]; const sel=s.model||(S.models&&S.models.default)||'claude-opus-4-8';
+  const rslug=A.prompt&&A.prompt.resolved?A.prompt.resolved.agent:s.agent; const isAuthor=ae && !ae.h && ae.slug===rslug;
+  const ccOwn = s.target==='cc' && s.at_ei!=null && isAuthor;
+  const anchorSel = (s.target==='tierb' && isAuthor) || ccOwn ? `<select data-anchor><option value="after"${s.anchor!=='before'?' selected':''}>just after it wrote this (ask about the message)</option><option value="before"${s.anchor==='before'?' selected':''}>just before it wrote this (its decision point)</option></select>`
+    : (s.target==='tierb' || s.at_ei!=null) ? '<span class="faint">just after the message (it could have just seen it)</span>' : '<span class="faint">at the chosen point in the window</span>';
+  o.innerHTML=`<div class="grid"><span>Answering model</span><select data-model>${models.map(m=>`<option value="${esc(m.id)}"${m.id===sel?' selected':''}${m.usable===false?' disabled':''}>${esc(m.id)}${m.note?' — '+esc(m.note):''}</option>`).join('')}</select>
+    <span>Moment</span>${anchorSel}
+    ${s.target==='tierb'?`<span>Context</span><span><input type="number" min="20" max="300" step="10" value="${esc(s.window||80)}" data-window style="width:74px"> room messages</span>
+    <span></span><label title="On (default): its own messages become its earlier (assistant) turns and everyone else's are user turns; the note tells the model so. Off: the chat is one transcript in a single message."><input type="checkbox" data-turns${s.format!=='transcript'?' checked':''}> replay its own messages as its turns</label>`:''}
+    ${ccOwn?`<span></span><label><input type="checkbox" data-approx> use the approximate room-chat reconstruction instead</label>`:''}
+    ${s.target==='tierb'&&s.from_cc!=null?`<span></span><label><input type="checkbox" data-approx checked> use the approximate room-chat reconstruction instead</label>`:''}</div>
+    <div class="foot"><button data-exact>Show exact prompt</button><button data-history>Earlier questions here</button><button class="ghost" data-optsclose>Done</button></div>`;
+}
+function keepFocus(){ const a=document.activeElement; if(a && (a.id==='askq' || (a.dataset&&a.dataset.fu))) return {id:a.id, fu:a.dataset.fu, v:a.value, s:a.selectionStart, e:a.selectionEnd}; return null; }
+function restoreFocus(k){ if(!k) return; const el=k.id?$('#'+k.id):document.querySelector(`[data-fu="${CSS.escape(k.fu)}"]`); if(el){ el.value=k.v; el.focus(); try{ el.setSelectionRange(k.s,k.e); }catch(e){} } }
+/* A warning line when the answer did not end normally (the probe record's normalised stop_reason). */
+function stopNote(sr){ return sr==='max_tokens' ? '<div class="stopw">⚠ Cut off at the output limit: this answer is incomplete.</div>' : sr==='refusal' ? '<div class="stopw">⚠ The model declined to answer (stop reason: refusal).</div>' : ''; }
+/* Anthropic models return a model-written summary of their thinking; other providers may return raw reasoning. */
+function answerThinkLabel(r){ const prov=(r.request&&r.request.provider)||''; return prov==='anthropic' || /^claude/i.test(r.model||'') ? 'its thinking (a model-written summary, not the raw chain of thought)' : 'its thinking (as the provider returned it: raw reasoning or a summary, depending on the model)'; }
+function cardHTML(c){
+  const r=c.result, st=c.status;
+  const q = c.mode==='resample' ? `<div class="bubble-q"><span class="mode">resample · ${esc(c.model||'')}</span>take your next turn</div>` : `<div class="bubble-q"><span class="mode">${esc(c.model||'')}</span>${esc(c.question||(r&&r.question_effective)||'(default question)')}</div>`;
+  if(st!=='done' && st!=='error') return q+`<div class="bubble-a"><div class="spin"><span class="pulse"></span>${st==='queued'?'queued':'thinking'} · <span data-elapsed="${esc(c.job_id)}">${Math.round(c.elapsed||0)}s</span> <span class="faint">(usually 10–90s — you can keep browsing)</span></div></div>`;
+  if(st==='error') return q+`<div class="bubble-a err">Error: ${esc(c.error||(r&&r.error)||'unknown')} <button class="ghost" data-retry="${esc(c.job_id)}">Retry</button></div>`+(r&&r.text?`<div class="bubble-a"><div class="txt">${esc(r.text)}</div></div>`:'');
+  const act=r.actual||{kind:'none'};
+  const actualTxt = act.kind==='none' ? `<span class="faint">Nothing to compare: ${esc(act.content||'it posted nothing more in this room within 2h.')}</span>` :
+    `${act.kind==='next'&&act.gap_s!=null?`<div class="faint" style="font-size:11px">its next message, ${Math.round(act.gap_s/60)} min later</div>`:''}${esc(act.content||'')}${act.actions&&act.actions.length?'\n'+act.actions.map(a=>'⏺ '+esc(a.name)+'('+esc(JSON.stringify(a.input).slice(0,200))+')').join('\n'):''}`;
+  const res=`${esc(r.text||'')}${r.tool_use?`\n⏺ ${esc(r.tool_use.name)}(${esc(JSON.stringify(r.tool_use.input).slice(0,300))})`:''}`;
+  const body = c.mode==='resample' ? `<div class="cmp"><div><div class="lb">Resampled (${esc(r.model)} as ${esc(agentName(c.agent))})</div>${res}</div><div><div class="lb">What it actually did</div>${actualTxt}</div></div>` : `<div class="txt">${esc(r.text||'(no text)')}</div>`;
+  const fus=(c.followups||[]).map(f=>`<div class="bubble-q">${esc(f.question)}</div>${f.status==='done'?`<div class="bubble-a">${stopNote((f.result&&f.result.stop_reason)||f.stop_reason)}<div class="txt">${esc(f.text||'')}</div></div>`:f.status==='error'?`<div class="bubble-a err">error: ${esc(f.error||'')}</div>`:`<div class="bubble-a"><div class="spin"><span class="pulse"></span>thinking…</div></div>`}`).join('');
+  return q+`<div class="bubble-a">${stopNote(r.stop_reason)}${body}
+      ${r.thinking?`<details><summary>${answerThinkLabel(r)}</summary><div class="tt">${esc(r.thinking)}</div></details>`:''}
+      ${c.mode!=='resample'?`<details><summary>compare with what it actually did</summary><div style="margin-top:4px;white-space:pre-wrap">${actualTxt}</div></details>`:''}</div>
+    <div class="alinks"><a data-fuopen="${esc(c.probe_id)}">follow up</a><a data-rerun="${esc(c.job_id)}">re-run</a><a data-used="${esc(c.probe_id)}">prompt used</a><a data-plink="${esc(c.probe_id)}">copy link</a><a data-pstar="${esc(c.probe_id)}">☆ star</a></div>
+    ${fus}${c.fuOpen?`<div style="display:flex;gap:6px;margin:4px 0 10px"><input type="text" style="flex:1" placeholder="Follow up…" data-fu="${esc(c.probe_id)}"><button data-fusend="${esc(c.probe_id)}">Send</button></div>`:''}`;
+}
+function wireAsk(){
+  $('#ahead').addEventListener('change', ev=>{ if(ev.target.id==='askagent'){ const slug=ev.target.value; const ae=anchorEv(); if(ae){ if(ae.slug===slug&&!ae.h) askSelf(ae.ei); else pickAsk(ae.ei, slug); } } });
+  $('#ahead').addEventListener('click', ev=>{ if(ev.target.closest('#askclose')){ closeAsk(); return; } if(ev.target.closest('.fiddetail')) return; if(ev.target.closest('#fidchip')){ const near=S.ask.prompt&&S.ask.prompt.fidelity&&S.ask.prompt.fidelity.level==='near_faithful'; S.ask.fidOpen=!(S.ask.fidOpen ?? !near); renderAsk(); } });
+  $('#athread').addEventListener('click', ev=>{ const A=S.ask; if(!A) return; const t=ev.target.closest('a,button,#askquote'); if(!t) return; const d=t.dataset;
+    if(t.id==='askquote'){ t.classList.toggle('full'); return; }
+    if(d.fuopen){ const c=A.cards.find(x=>x.probe_id===d.fuopen); if(c){ c.fuOpen=true; renderAsk(); const inp=document.querySelector(`[data-fu="${CSS.escape(d.fuopen)}"]`); if(inp) inp.focus(); } return; }
+    if(d.fusend){ const inp=document.querySelector(`[data-fu="${CSS.escape(d.fusend)}"]`); if(inp&&inp.value.trim()) sendFollowup(d.fusend, inp.value.trim()); return; }
+    if(d.rerun){ const c=A.cards.find(x=>x.job_id===d.rerun); if(c) sendProbe(c.question, c.mode); return; }
+    if(d.retry){ const c=A.cards.find(x=>x.job_id===d.retry); if(c){ A.cards=A.cards.filter(x=>x!==c); sendProbe(c.question, c.mode); } return; }
+    if(d.used){ showProbeUsed(d.used); return; }
+    if(d.plink){ const u=location.origin+location.pathname+'#/probe/'+d.plink; navigator.clipboard&&navigator.clipboard.writeText(u).then(()=>toast('Link copied'),()=>toast(esc(u))); return; }
+    if(d.pstar){ post('/api/stars',{op:'add', probe_id:d.pstar}).then(()=>toast('Starred')).catch(e=>toast(esc(e.message))); return; }
+  });
+  $('#athread').addEventListener('keydown', ev=>{ if(ev.target.dataset&&ev.target.dataset.fu&&ev.key==='Enter'){ ev.preventDefault(); const v=ev.target.value.trim(); if(v) sendFollowup(ev.target.dataset.fu, v); } });
+  $('#composer').addEventListener('input', ev=>{ if(ev.target.id==='askq') S.ask.question=ev.target.value; });
+  $('#composer').addEventListener('click', ev=>{ const A=S.ask; if(!A) return; const t=ev.target.closest('button,.chip'); if(!t) return; const d=t.dataset;
+    if(d.sugg){ A.question=d.sugg; const ta=$('#askq'); if(ta){ ta.value=d.sugg; ta.focus(); } return; }
+    if(d.mode){ A.spec.mode=d.mode; fetchPrompt(); renderAsk(); return; }
+    if(t.id==='optsbtn'){ A.optsOpen=!A.optsOpen; renderOpts(); return; }
+    if(t.id==='asksend'){ sendProbe(); return; } });
+  $('#opts').addEventListener('change', ev=>{ const A=S.ask; if(!A) return; const t=ev.target; const s=A.spec;
+    if(t.dataset.model!=null){ s.model=t.value; return; }
+    if(t.dataset.window!=null){ s.window=clamp(+t.value||80,20,300); fetchPrompt(300); return; }
+    if(t.dataset.turns!=null){ s.format=t.checked?'turns':'transcript'; fetchPrompt(); return; }
+    if(t.dataset.anchor!=null){ openAsk(Object.assign({}, s, {anchor:t.value})); S.ask.optsOpen=true; renderOpts(); return; }
+    if(t.dataset.approx!=null){ if(t.checked && s.target==='cc' && s.at_ei!=null){ const f=findEv(s.at_ei); openAsk({target:'tierb', agent:f?f.e.slug:null, ei:s.at_ei, anchor:s.anchor||'after', from_cc:1}); } else if(!t.checked && s.from_cc!=null) openAsk({target:'cc', at_ei:s.ei, anchor:s.anchor||'after'}); S.ask.optsOpen=true; renderOpts(); return; } });
+  $('#opts').addEventListener('click', ev=>{ const t=ev.target.closest('button'); if(!t) return; const d=t.dataset;
+    if(d.exact!=null) showExactPrompt(); if(d.history!=null) showHistory(); if(d.optsclose!=null){ S.ask.optsOpen=false; renderOpts(); } });
+  const rz=$('#askresize'); let sx=null, sw=null;
+  rz.addEventListener('mousedown', ev=>{ sx=ev.clientX; sw=$('aside.ask').offsetWidth; ev.preventDefault(); });
+  window.addEventListener('mousemove', ev=>{ if(sx==null) return; document.documentElement.style.setProperty('--ask-w', clamp(sw+(sx-ev.clientX), 360, Math.min(820, innerWidth*.6))+'px'); });
+  window.addEventListener('mouseup', ()=>{ sx=null; });
+}
+async function sendProbe(question, mode){
+  const A=S.ask; if(!A||!A.prompt) return; const s=A.spec; const m=mode||s.mode||'belief';
+  const q = question!=null ? question : (m==='resample' ? '' : ($('#askq')?$('#askq').value.trim():''));
+  const body=Object.assign(specParams(Object.assign({}, s, {mode:m}), q), {model:s.model||(S.models&&S.models.default)||'claude-opus-4-8'});
+  let r; try{ r=await post('/api/probe', body); }catch(e){ toast('Ask failed: '+esc(e.message)); return; }
+  const card={job_id:r.job_id, probe_id:r.probe_id, status:r.status||'queued', question:q, mode:m, model:body.model, agent:(A.prompt.resolved||{}).agent||s.agent, elapsed:0, followups:[]};
+  A.cards.push(card); A.question=''; renderAsk(); const th=$('#athread'); th.scrollTop=th.scrollHeight; trackJob(r.job_id, r.probe_id, card);
+}
+async function sendFollowup(probe_id, question){
+  const A=S.ask; const c=A.cards.find(x=>x.probe_id===probe_id||(x.followups||[]).some(f=>f.probe_id===probe_id)); if(!c) return;
+  const lastId=(c.followups&&c.followups.length)?c.followups[c.followups.length-1].probe_id:c.probe_id;
+  let r; try{ r=await post('/api/probe',{parent_id:lastId, question}); }catch(e){ toast('Follow-up failed: '+esc(e.message)); return; }
+  const f={job_id:r.job_id, probe_id:r.probe_id, question, status:'queued'}; c.followups.push(f); if(document.activeElement) document.activeElement.blur(); renderAsk(); trackJob(r.job_id, r.probe_id, f);
+}
+function trackJob(job_id, probe_id, target){ S.jobs.set(job_id,{job_id, probe_id, target, t0:Date.now()}); updJobs(); if(!S._jt) S._jt=setInterval(pollJobs,2000); }
+async function pollJobs(){
+  if(!S.jobs.size){ clearInterval(S._jt); S._jt=null; updJobs(); return; }
+  for(const [id,J] of [...S.jobs]){
+    let j; try{ j=await api('/api/job?id='+encodeURIComponent(id)); }catch(e){ if(e.status===404) S.jobs.delete(id); continue; }
+    const t=J.target; if(t){ t.status=j.status; t.elapsed=j.elapsed_s; }
+    const el=document.querySelector(`[data-elapsed="${CSS.escape(id)}"]`); if(el) el.textContent=Math.round(j.elapsed_s||0)+'s';
+    if(j.status==='done'||j.status==='error'){
+      S.jobs.delete(id); const res=j.result||{};
+      if(t){ if(j.status==='done'){ t.result=res; if(t.text===undefined) t.text=res.text; } else { t.error=j.error||res.error; if(res.text) t.result=res; } }
+      if(j.status==='done'){
+        if(!S.ask || !t){ const tt=toast(`Answer ready · ${esc(agentName(res.agent||''))} <button>View</button>`); tt.querySelector('button').onclick=()=>{ location.hash='#/probe/'+j.probe_id; }; }
+        if(res.day!=null && !res.parent_id){ S.ov.probes_by_day=S.ov.probes_by_day||{}; S.ov.probes_by_day[res.day]=(S.ov.probes_by_day[res.day]||0)+1; }
+        const aei=res.resolved&&res.resolved.ei; const f=aei!=null?findEv(aei):null; if(f&&!res.parent_id) f.e.n_probes=(f.e.n_probes||0)+1; }
+      else toast('Error: '+esc(j.error||''));
+      if(S.ask) renderAsk(); render();
+    }
+  }
+  updJobs();
+}
+function updJobs(){ $('#jobs').classList.toggle('on', S.jobs.size>0); $('#jobsn').textContent=S.jobs.size; }
+async function showExactPrompt(){ const A=S.ask; if(!A) return; const qs=new URLSearchParams(specParams(A.spec, ($('#askq')&&$('#askq').value.trim())||A.question||''));
+  let p; try{ p=await api('/api/probe/prompt?'+qs); }catch(e){ toast(esc(e.message)); return; } promptModal(p.system, p.messages, 'PREVIEW — what Send will send', false, p.sha256); }
+async function showProbeUsed(id){ let r; try{ r=await api('/api/probes/'+encodeURIComponent(id)); }catch(e){ toast(esc(e.message)); return; } promptModal(r.system, r.messages, 'SENT — from the probe log', true, r.sha256); }
+/* Where the appended question starts in the last user message: the belief question prefix (cc_lib._BELIEF_PREFIX)
+   or the resample cue for approximate agents. Neither found (e.g. a Claude Code resample) = nothing is highlighted. */
+const Q_MARKERS=['(A pause before your next step', '(Your turn:'];
+function questionStart(txt){ return Math.max(...Q_MARKERS.map(m=>txt.lastIndexOf(m))); }
+function promptModal(system, messages, label, sent, sha){
+  const text=`SYSTEM\n${system}\n\n`+(messages||[]).map(m=>`[${m.t||m.role}]\n${m.text!=null?m.text:JSON.stringify(m)}`).join('\n\n');
+  const bg=document.createElement('div'); bg.className='modal-bg';
+  const msgs=(messages||[]).map((m,i)=>{ const last=i===messages.length-1&&(m.t==='user'||m.role==='user'); const txt=m.text!=null?m.text:JSON.stringify(m.input||m,null,2);
+    const k=last?questionStart(txt):-1;
+    const bh=k>=0?`${esc(txt.slice(0,k))}<span class="qhl">${esc(txt.slice(k))}</span>`:esc(txt);
+    return `<div class="pmsg"><div class="role">[${esc(m.t||m.role)}] <span style="font-weight:400">· ${fmt(txt.split('\n').length)} lines</span></div><pre>${bh}</pre></div>`; }).join('');
+  bg.innerHTML=`<div class="modal" role="dialog" aria-label="Exact prompt"><div class="mh2"><span class="src${sent?' sent':''}">${esc(label)}</span><span class="faint">${fmt(text.length)} chars · ~${fmt(Math.round(text.length/4))} tokens${sha?` · sha256 ${esc(String(sha).slice(0,12))}…`:''}</span><span style="margin-left:auto"></span>
+    <div class="seg"><button data-pt="sys">System</button><button data-pt="msg" class="on">Messages</button><button data-pt="raw">Raw JSON</button></div><button data-copyt>Copy</button><button data-close>✕</button></div>
+    <div class="mb"><div data-pane="msg">${msgs}</div><div data-pane="sys" style="display:none"><pre>${esc(system)}</pre></div><div data-pane="raw" style="display:none"><pre>${esc(JSON.stringify({system,messages},null,2))}</pre></div></div></div>`;
+  document.body.appendChild(bg); const close=()=>{ bg.remove(); document.removeEventListener('keydown',kd,true); }; const kd=ev=>{ if(ev.key==='Escape'){ ev.stopPropagation(); close(); } }; document.addEventListener('keydown',kd,true);
+  bg.addEventListener('click', ev=>{ if(ev.target===bg) close(); const b=ev.target.closest('button'); if(!b) return; if(b.dataset.close!=null) close();
+    if(b.dataset.pt){ bg.querySelectorAll('[data-pt]').forEach(x=>x.classList.toggle('on',x===b)); bg.querySelectorAll('[data-pane]').forEach(p=>p.style.display=p.dataset.pane===b.dataset.pt?'':'none'); }
+    if(b.dataset.copyt!=null) navigator.clipboard&&navigator.clipboard.writeText(text).then(()=>toast('Copied')); });
+}
+async function showHistory(){ const A=S.ask; if(!A) return; const s=A.spec; const q=s.target==='tierb'?`ei=${s.ei}`:s.at_ei!=null?`ei=${s.at_ei}`:`seg_id=${s.seg_id}`;
+  let here=[], all=[]; try{ [here, all]=await Promise.all([api('/api/probes?'+q+'&limit=50'), api('/api/probes?limit=40')]); }catch(e){}
+  const row=p=>`<div class="mi" data-probe="${esc(p.probe_id)}"><b>${esc(agentName(p.agent))}</b> · ${esc(p.question||p.text_preview||p.mode||'')}<span class="r2">d${esc(p.day??'?')}</span></div>`;
+  const roots=here.filter(p=>!p.parent_id), recent=all.filter(p=>!p.parent_id);
+  const m=openMenu($('#optsbtn'), `<div class="mh">At this moment · ${roots.length}</div>${roots.map(row).join('')||'<div class="mi faint">none yet</div>'}<div class="mh">All recent questions</div>${recent.map(row).join('')||'<div class="mi faint">none yet</div>'}`);
+  m.addEventListener('click', ev=>{ const p=ev.target.closest('[data-probe]'); if(p){ closeMenu(); location.hash='#/probe/'+p.dataset.probe; } }); }
+async function openProbePermalink(id){
+  let r; try{ r=await api('/api/probes/'+encodeURIComponent(id)); }catch(e){ toast("Couldn't open that question: "+esc(e.message)); location.hash='#/'; return; }
+  let root=r; for(let g=0; root.parent_id && g<50; g++){ try{ root=await api('/api/probes/'+root.parent_id); }catch(e){ break; } }
+  const res=root.resolved||{}; const day=root.day;
+  if(day!=null){ await revealDay(day); S._curDay=day; S._lastHashDay=day; if(res.ei!=null) S.sel='m'+res.ei; }
+  const spec = root.target==='cc' ? (res.match==='time' || res.match==='posting_turn' ? {target:'cc', at_ei:res.ei, anchor:res.anchor==='before'?'before':'after'} : {target:'cc', seg_id:res.seg_id, seq:res.seq}) : {target:'tierb', agent:root.agent, ei:res.ei, anchor:root.anchor||res.anchor||'after', window:root.window||80, format:root.format||'transcript'};
+  spec.mode=root.mode; openAsk(spec,{fromHash:true});
+  const kids=[]; try{ const chain=await api('/api/probes?'+(res.ei!=null?'ei='+res.ei:'seg_id='+res.seg_id)+'&limit=200'); const byP=new Map(chain.filter(p=>p.parent_id).map(p=>[p.parent_id,p])); let cur=root.probe_id;
+    while(byP.has(cur)){ const k=byP.get(cur); const full=await api('/api/probes/'+k.probe_id).catch(()=>null); if(!full) break; kids.push({probe_id:full.probe_id, question:full.question, status:full.status, text:full.text, error:full.error, stop_reason:full.stop_reason}); cur=k.probe_id; } }catch(e){}
+  S.ask.cards=[{job_id:'p-'+root.probe_id, probe_id:root.probe_id, status:root.status||'done', result:root, question:root.question, mode:root.mode, model:root.model, agent:root.agent, followups:kids}];
+  history.replaceState(null,'',buildHash()); render(S.sel?{scrollTo:{key:S.sel}}:{}); renderAsk();
+}
+async function toggleStar(ei){ const s=(S.stars||[]).find(x=>x.ei===ei);
+  try{ if(s) await post('/api/stars',{op:'remove', id:s.id}); else await post('/api/stars',{op:'add', ei}); S.stars=await api('/api/stars'); }catch(e){ toast(esc(e.message)); return; }
+  const f=findEv(ei); if(f) f.e.star=!s; const fe=S.ev.get(ei); if(fe) fe.star=!s; render(); toast(s?'Unstarred':'Starred'); }
+
+/* ------------------------------------------ View menu ------------------------------------------ */
+function viewMenu(btn){
+  const V=S.view; const cb=(k,l,h)=>`<label class="mi"><input type="checkbox" data-v="${k}" ${V[k]?'checked':''}> ${esc(l)}<span class="r2">${esc(h||'')}</span></label>`;
+  const m=openMenu(btn, `<div class="mh">Add detail</div>${cb('act','Activity events','computer use, pauses, searches')}${cb('strip','Overview strip','every day at a glance')}${cb('lanes','Room lanes','rooms as branches')}
+    <div class="mh">Layout</div>${cb('newest','Newest first','')}${cb('compact','Compact rows','')}
+    <div class="mh">Search</div><label class="mi"><input type="checkbox" data-hitsonly ${S.hitsOnly?'checked':''}> Only show matching messages<span class="r2">while searching</span></label>
+    <div class="mh">Other</div><div class="mi" data-focuspick>Focus an agent…</div><div class="mi" data-collapse>Close the open day</div>${S.startDismissed?'<div class="mi" data-restart>Show the “Start here” row</div>':''}`);
+  m.addEventListener('change', ev=>{ const t=ev.target; if(t.dataset.v){ S.view[t.dataset.v]=t.checked; saveViewPrefs(); render(); drawStrip(); } if(t.dataset.hitsonly!=null){ S.hitsOnly=t.checked; render(); } });
+  m.addEventListener('click', ev=>{ const t=ev.target.closest('.mi'); if(!t) return;
+    if(t.dataset.collapse!=null){ S.open.days.clear(); S.open.msgs.clear(); S.cc.clear(); S._curDay=null; closeMenu(); render(); $('#tlpane').scrollTop=0; replaceHash(); }
+    if(t.dataset.restart!=null){ S.startDismissed=false; ls('startDismissed','0'); closeMenu(); render(); }
+    if(t.dataset.focuspick!=null){ closeMenu(); focusPicker(btn); } });
+}
+function focusPicker(btn){
+  const groups=['anthropic','openai','google','other'].map(f=>{ const as=S.ov.agents.filter(a=>a.family_group===f&&a.n_msgs); return as.length?`<div class="mh">${FGNAME[f]}</div>${as.map(a=>`<div class="mi" data-pick="${esc(a.slug)}" data-name="${esc(a.name.toLowerCase())}">${dot(f)}${esc(a.name)}${S.focus.includes(a.slug)?' ✓':''}<span class="r2">d${esc(a.first_day)}–${esc(a.last_day)}</span></div>`).join('')}`:''; }).join('');
+  const m=openMenu(btn, `<input type="text" placeholder="Focus an agent… (shift-click adds)" data-filter>${groups}`);
+  m.querySelector('[data-filter]').addEventListener('input', ev=>{ const v=ev.target.value.toLowerCase(); m.querySelectorAll('[data-pick]').forEach(x=>x.style.display=x.dataset.name.includes(v)?'':'none'); });
+  m.addEventListener('click', ev=>{ const p=ev.target.closest('[data-pick]'); if(!p) return; closeMenu(); toggleFocus(p.dataset.pick, ev.shiftKey); });
+}
+
+/* ------------------------------------------ keyboard ------------------------------------------ */
+const KEYS=[['/','search'],['j  k  (↓ ↑)','move down / up'],['→  Enter','open the selected row'],['←','close it (or go to its parent)'],['a','ask the selected message\'s agent'],['n  N','next / previous search hit'],['f','focus the selected agent'],['[  ]','previous / next day'],['⌘/Ctrl+Enter','send the question'],['Esc','close menus → the Ask pane → search → selection'],['?','this help']];
+function showHelp(){ const bg=document.createElement('div'); bg.className='modal-bg'; bg.innerHTML=`<div class="modal help-ov" style="height:auto;width:min(520px,92vw)"><div class="mh2"><b>Keyboard</b><span style="margin-left:auto"></span><button data-close>✕</button></div><div class="mb"><table>${KEYS.map(([k,v])=>`<tr><td><span class="kbd">${esc(k)}</span></td><td>${esc(v)}</td></tr>`).join('')}</table>
+  <p class="muted" style="font-size:12.5px;margin-top:12px">The timeline: goals → days → messages, each opening in place. The lines on the left are chat rooms: #general is the trunk; #best/#rest branch off when the village split into rooms and merge back when everyone returned to #general.</p></div></div>`;
+  document.body.appendChild(bg); bg.addEventListener('click',ev=>{ if(ev.target===bg||ev.target.closest('[data-close]')) bg.remove(); }); }
+function onKey(ev){
+  const tag=(ev.target.tagName||'').toLowerCase(); const typing=tag==='input'||tag==='textarea'||tag==='select';
+  if((ev.metaKey||ev.ctrlKey) && ev.key==='Enter'){ if(S.ask){ ev.preventDefault(); sendProbe(); } return; }
+  if(ev.key==='Escape'){ if(_menu){ closeMenu(); return; } if(document.querySelector('.modal-bg')) return; if(typing){ ev.target.blur(); return; }
+    if(S.ask&&S.ask.optsOpen){ S.ask.optsOpen=false; renderOpts(); return; } if(S.ask){ closeAsk(); return; } if(S.q){ clearSearch(); return; } if(S.sel){ S.sel=null; render(); replaceHash(); } return; }
+  if(typing||ev.metaKey||ev.ctrlKey||ev.altKey) return;
+  const idx=_rows.findIndex(r=>r.key===S.sel); const cur=_rows[idx];
+  const move=d=>{ let i=idx<0?(d>0?-1:_rows.length):idx; for(;;){ i+=d; if(i<0||i>=_rows.length) return; if(!['util','gap','start','dayend'].includes(_rows[i].t)) break; }
+    const r=_rows[i]; setSel(r.key); const el=document.querySelector(`#tl .r[data-key="${CSS.escape(r.key)}"]`); if(el) el.scrollIntoView({block:'nearest'}); };
+  const isOpen=r=>(r.t==='day'&&S.open.days.has(r.day))||(r.t==='about'&&S.open.about.has(r.day))||(r.t==='turn'&&r.cc.open.has(r.i));
+  switch(ev.key){
+    case '/': ev.preventDefault(); $('#q').focus(); $('#q').select(); break;
+    case 'j': case 'ArrowDown': ev.preventDefault(); move(1); break;
+    case 'k': case 'ArrowUp': ev.preventDefault(); move(-1); break;
+    case 'ArrowRight': case 'Enter': if(cur){ ev.preventDefault(); if(!isOpen(cur)||ev.key==='Enter') activateRow(cur.key); } break;
+    case 'ArrowLeft': { ev.preventDefault(); const d=[...S.open.days][0]; if(cur && isOpen(cur) && cur.t!=='day') activateRow(cur.key); else if(d!=null) closeDay(d); } break;
+    case 'a': if(cur&&cur.t==='msg'&&cur.ev.k==='c'){ if(!cur.ev.h) askSelf(cur.ev.ei); else { const el=document.querySelector(`#tl .r[data-key="${CSS.escape(cur.key)}"] .b`); if(el) askOtherMenu(cur.ev.ei, el); } } break;
+    case 'n': stepHit(1); break; case 'N': stepHit(-1); break;
+    case 'f': if(cur&&cur.t==='msg'&&cur.ev.slug&&!cur.ev.h) toggleFocus(cur.ev.slug); break;
+    case '[': case ']': { const d=S._curDay; const nd = d==null ? S.activeDays[0] : ev.key===']' ? S.activeDays.find(x=>x>d) : S.activeDays.filter(x=>x<d).pop(); if(nd!=null) openDay(nd); } break;
+    case '?': showHelp(); break;
+  }
+}
+
+/* ------------------------------------------ wiring ------------------------------------------ */
+function wire(){
+  wireTimeline(); wireAsk(); wireStrip();
+  const q=$('#q'), sug=$('#suggest');
+  q.addEventListener('keydown', ev=>{ if(ev.key==='Enter'){ ev.preventDefault(); sug.style.display='none'; q.blur(); runSearch(q.value); } });   // blur so n / N step through hits right away
+  q.addEventListener('focus', ()=>{ if(!q.value){ sug.innerHTML=`<div class="faint">Try</div><div class="chips">${['"ganging up"','from:gemini-2-5-pro struggling','about:gemini-2-5-pro day:440-452','in:thinking Gemini distress','from:operator goal'].map(x=>`<span class="chip" data-ex="${esc(x)}">${esc(x)}</span>`).join('')}</div>
+    <div class="muted" style="line-height:1.7">Words are ANDed · <code>"phrase"</code> · <code>from:agent|family|operator</code> · <code>about:agent</code> (≈ mentions) · <code>room:general</code> · <code>day:440-452</code> · <code>in:thinking</code><br>Jump: <code>447</code> · <code>2026-06-22</code> · <code>ei:263749</code></div>`; sug.style.display='block'; } });
+  q.addEventListener('input', ()=>{ sug.style.display=q.value?'none':'block'; $('#qclear').style.display=q.value?'block':'none'; });
+  q.addEventListener('blur', ()=>setTimeout(()=>{ sug.style.display='none'; },150));
+  sug.addEventListener('mousedown', ev=>{ const c=ev.target.closest('[data-ex]'); if(c){ ev.preventDefault(); q.value=c.dataset.ex; sug.style.display='none'; runSearch(c.dataset.ex); } });
+  $('#qclear').addEventListener('click', ()=>clearSearch());
+  $('#viewbtn').addEventListener('click', ev=>{ if(S.ov) viewMenu(ev.currentTarget); });
+  $('#helpbtn').addEventListener('click', showHelp);
+  $('#focuschips').addEventListener('click', ev=>{ const b=ev.target.closest('[data-unfocus]'); if(b) toggleFocus(b.dataset.unfocus); });
+  $('#focuschips').addEventListener('change', ev=>{ if(ev.target.id==='onlyfocus'){ S.only=ev.target.checked; render(); replaceHash(); } });
+  $('#jobs').addEventListener('click', ev=>{ const list=[...S.jobs.values()]; const m=openMenu(ev.currentTarget, `<div class="mh">Being answered</div>${list.map(j=>`<div class="mi" data-probe="${esc(j.probe_id)}">${esc((j.target&&j.target.question)||'(question)')}<span class="r2">${Math.round((Date.now()-j.t0)/1000)}s</span></div>`).join('')||'<div class="mi faint">none</div>'}`);
+    m.addEventListener('click', e2=>{ const p=e2.target.closest('[data-probe]'); if(p){ closeMenu(); location.hash='#/probe/'+p.dataset.probe; } }); });
+  $('#themebtn').addEventListener('click', ()=>{ const cur=document.documentElement.dataset.theme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'); const n=cur==='dark'?'light':'dark'; document.documentElement.dataset.theme=n; ls('theme',n); drawStrip(); });
+  document.addEventListener('keydown', onKey);
+}
+boot();
+</script>
+</body>
+</html>

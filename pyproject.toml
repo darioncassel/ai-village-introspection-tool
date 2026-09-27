@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-village-introspection-tool"
+version = "0.1.0"
+description = "Browse the AI Village logs as a timeline, pick a moment, and ask an agent about it with a live model."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+# tested with anthropic 1.0, 1.4 and 1.8, and openai 1.70, 2.54, 3.0 and 3.19
+dependencies = ["anthropic>=1.0,<2", "openai>=1.70,<4"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "pre-commit>=3"]
+
+[project.scripts]
+village-introspect = "village_introspect.server:main"
+
+[tool.setuptools]
+packages = ["village_introspect"]
+
+[tool.setuptools.package-data]
+village_introspect = ["viewer.html"]
+
+[tool.black]
+line-length = 120
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+extend-select = ["I"]  # import sorting
